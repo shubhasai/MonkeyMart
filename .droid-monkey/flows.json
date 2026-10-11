@@ -1,0 +1,231 @@
+{
+  "flows": [
+    {
+      "name": "place_order",
+      "description": "Open a product, tap Buy now, fill the delivery form and place an order.",
+      "steps": [
+        "open a product from the shop list",
+        "wait for the detail screen to load",
+        "tap Buy now",
+        "fill Full name, Email, Phone, Address, City and Pincode",
+        "tap Place order",
+        "see the order confirmation"
+      ],
+      "ui_hints": [
+        "Delivery details",
+        "Full name",
+        "Pincode",
+        "Place order",
+        "Order placed",
+        "checkout_screen",
+        "place_order",
+        "field_name",
+        "order_confirmed",
+        "buy_now"
+      ],
+      "state_at_risk": [
+        "the six typed delivery form fields",
+        "the in-flight order (placing state)",
+        "the order confirmation and order id"
+      ],
+      "code": [
+        "app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:62",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:14",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:29",
+        "app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:26"
+      ],
+      "risks": [
+        {
+          "fault": "network_loss",
+          "why": "submit throws IOException when offline and placeOrder launches it in viewModelScope with no try/catch, so the app crashes.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:27",
+          "trigger": "tap Place order"
+        },
+        {
+          "fault": "airplane_mode",
+          "why": "with airplane mode on there is no active network, submit throws the uncaught IOException raised at the call site in the ViewModel coroutine.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:31",
+          "trigger": "tap Place order"
+        },
+        {
+          "fault": "process_death",
+          "why": "the form fields live in plain mutableStateOf inside the ViewModel with no SavedStateHandle, so after process death the checkout route is restored with an empty form.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:14",
+          "trigger": "after filling all six checkout fields, before tapping Place order"
+        },
+        {
+          "fault": "dont_keep_activities",
+          "why": "the system destroys the activity without a configuration change, which clears the ViewModelStore and drops the typed form and any order result.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34",
+          "trigger": "after filling the checkout form, switch to another app and come back"
+        },
+        {
+          "fault": "low_memory",
+          "why": "memory pressure on a backgrounded app kills the process and the unsaved ViewModel form with it.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:13",
+          "trigger": "after filling the checkout form, with the app in the background"
+        },
+        {
+          "fault": "rotation",
+          "why": "the ViewModel should keep the form and orderId, but the in-flight placing state and confirmation screen (which reads vm.city) are worth verifying across recreation.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:40",
+          "trigger": "while the Place order spinner is showing, and again on the Order placed screen"
+        }
+      ]
+    },
+    {
+      "name": "detail_deal_popup",
+      "description": "Open a product and wait for its detail and the Deal unlocked popup to appear.",
+      "steps": [
+        "open a product from the shop list",
+        "wait on the loading spinner for the detail to load",
+        "see the Deal unlocked dialog",
+        "tap Nice"
+      ],
+      "ui_hints": [
+        "detail_loading",
+        "detail_screen",
+        "detail_name",
+        "detail_price",
+        "Buy now",
+        "Deal unlocked",
+        "Nice",
+        "today only"
+      ],
+      "state_at_risk": [
+        "the loaded product (reloaded after recreation)",
+        "the deal dialog (may be shown twice or over the wrong screen)"
+      ],
+      "code": [
+        "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:57",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:58",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:64",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:73",
+        "app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt:37"
+      ],
+      "risks": [
+        {
+          "fault": "rotation",
+          "why": "DealLoader runs in GlobalScope holding the old Activity, and after the 5 s load it calls DialogFragment.show on a FragmentManager whose state is already saved or destroyed, which throws IllegalStateException and crashes the app.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:64",
+          "trigger": "rotate the device within 5 seconds of opening a product, while the spinner is showing"
+        },
+        {
+          "fault": "dont_keep_activities",
+          "why": "the activity is destroyed while the GlobalScope load is pending, so the later fragment transaction on its FragmentManager throws and crashes.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:58",
+          "trigger": "open a product, leave the app and return within 5 seconds while the spinner is showing"
+        },
+        {
+          "fault": "process_death",
+          "why": "the loaded product is held in remember rather than saved, so after restore the 5 s load and the deal dialog start over.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:73",
+          "trigger": "after the product detail has loaded"
+        },
+        {
+          "fault": "font_scale",
+          "why": "the detail Column does not scroll and has a 96sp emoji, so at large font scale the Buy now button can be pushed off screen.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:86",
+          "trigger": "open a product with the largest font scale and look for the Buy now button"
+        },
+        {
+          "fault": "low_memory",
+          "why": "the unscoped load is not tied to the lifecycle, so background memory pressure and return can reload the product and show the dialog again.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:74",
+          "trigger": "open a product and send the app to the background while the spinner is showing"
+        }
+      ]
+    },
+    {
+      "name": "scan_coupon",
+      "description": "On checkout, grant camera permission and scan a coupon, then scan again later.",
+      "steps": [
+        "open a product and tap Buy now",
+        "tap Scan coupon",
+        "allow the camera permission",
+        "see the scanner ready message",
+        "tap Scan coupon again"
+      ],
+      "ui_hints": [
+        "Scan coupon",
+        "scan_coupon",
+        "coupon_status",
+        "Scanner ready: point the camera at your coupon",
+        "Camera permission is needed to scan coupons"
+      ],
+      "state_at_risk": [
+        "the coupon status message",
+        "typed checkout form fields if the process is killed by the permission change"
+      ],
+      "code": [
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:33",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:37",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:44",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:76",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:74"
+      ],
+      "risks": [
+        {
+          "fault": "permission_revoke",
+          "why": "the grant is cached in SharedPreferences and never rechecked with checkSelfPermission, so after revocation openCamera throws SecurityException.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:44",
+          "trigger": "tap Scan coupon after the camera permission was granted once and then revoked"
+        },
+        {
+          "fault": "permission_revoke",
+          "why": "the stale camera_granted flag written on first grant is what routes the tap to open() instead of asking again.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:37",
+          "trigger": "tap Scan coupon again after revoking camera in Settings"
+        },
+        {
+          "fault": "rotation",
+          "why": "the coupon status text is remembered, not saved, so it resets when the activity is recreated.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:63",
+          "trigger": "after the scanner ready message appears"
+        }
+      ]
+    },
+    {
+      "name": "browse_shop",
+      "description": "Browse the product list and open and return from product pages.",
+      "steps": [
+        "open the app and see the product list",
+        "scroll the list",
+        "open a product",
+        "press back to return to the list"
+      ],
+      "ui_hints": [
+        "shop_list",
+        "shop_loading",
+        "product_1",
+        "Banana Bunch",
+        "Coconut Water",
+        "MonkeyMart"
+      ],
+      "state_at_risk": [
+        "list scroll position",
+        "the loaded product list (reloaded in 800 ms)"
+      ],
+      "code": [
+        "app/src/main/java/com/shubhasai/monkeymart/ui/ShopScreen.kt:36",
+        "app/src/main/java/com/shubhasai/monkeymart/ui/ShopScreen.kt:37",
+        "app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:66"
+      ],
+      "risks": [
+        {
+          "fault": "locale_rtl",
+          "why": "prices are formatted with the default locale and the row layout has a fixed price Text, so RTL and non-Latin digits could break the row layout.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt:14",
+          "trigger": "scroll the product list after switching to an RTL locale"
+        },
+        {
+          "fault": "process_death",
+          "why": "the product list is held in remember and reloaded after restore, so the list shows a spinner and scroll position can be lost.",
+          "code": "app/src/main/java/com/shubhasai/monkeymart/ui/ShopScreen.kt:36",
+          "trigger": "while scrolled down in the product list"
+        }
+      ]
+    }
+  ]
+}
