@@ -3,6 +3,8 @@ package com.shubhasai.monkeymart.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
+import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.os.Handler
@@ -24,36 +26,36 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 
 /** Opens the camera to scan a coupon code at checkout. */
 object CouponScanner {
-    private const val PREFS = "monkeymart_prefs"
-    private const val KEY_CAMERA_GRANTED = "camera_granted"
-
     fun hasCameraAccess(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CAMERA_GRANTED, false)
-
-    fun rememberCameraGranted(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CAMERA_GRANTED, true).apply()
-    }
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     @SuppressLint("MissingPermission")
-    fun open(context: Context, onResult: (String) -> Unit) {
-        val cameras = context.getSystemService(CameraManager::class.java)
-        val cameraId = cameras.cameraIdList.firstOrNull() ?: return onResult("No camera on this device")
-        cameras.openCamera(cameraId, object : CameraDevice.StateCallback() {
-            override fun onOpened(camera: CameraDevice) {
-                camera.close()
-                onResult("Scanner ready: point the camera at your coupon")
-            }
+    fun open(context: Context, onPermissionDenied: () -> Unit, onResult: (String) -> Unit) {
+        try {
+            val cameras = context.getSystemService(CameraManager::class.java)
+            val cameraId = cameras.cameraIdList.firstOrNull() ?: return onResult("No camera on this device")
+            cameras.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    camera.close()
+                    onResult("Scanner ready: point the camera at your coupon")
+                }
 
-            override fun onDisconnected(camera: CameraDevice) = camera.close()
+                override fun onDisconnected(camera: CameraDevice) = camera.close()
 
-            override fun onError(camera: CameraDevice, error: Int) {
-                camera.close()
-                onResult("Camera error $error")
-            }
-        }, Handler(Looper.getMainLooper()))
+                override fun onError(camera: CameraDevice, error: Int) {
+                    camera.close()
+                    onResult("Camera error $error")
+                }
+            }, Handler(Looper.getMainLooper()))
+        } catch (e: SecurityException) {
+            onPermissionDenied()
+        } catch (e: CameraAccessException) {
+            onResult("Camera unavailable")
+        }
     }
 }
 
@@ -63,8 +65,7 @@ fun ScanCouponButton(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf("") }
     val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            CouponScanner.rememberCameraGranted(context)
-            CouponScanner.open(context) { status = it }
+            CouponScanner.open(context, onPermissionDenied = { status = "Camera permission is needed to scan coupons" }) { status = it }
         } else {
             status = "Camera permission is needed to scan coupons"
         }
@@ -74,7 +75,10 @@ fun ScanCouponButton(modifier: Modifier = Modifier) {
         OutlinedButton(
             onClick = {
                 if (CouponScanner.hasCameraAccess(context)) {
-                    CouponScanner.open(context) { status = it }
+                    CouponScanner.open(context, onPermissionDenied = {
+                        status = "Camera permission is needed to scan coupons"
+                        askCamera.launch(Manifest.permission.CAMERA)
+                    }) { status = it }
                 } else {
                     askCamera.launch(Manifest.permission.CAMERA)
                 }
