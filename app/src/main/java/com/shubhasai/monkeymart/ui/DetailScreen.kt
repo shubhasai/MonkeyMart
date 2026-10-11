@@ -31,10 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.shubhasai.monkeymart.data.Product
 import com.shubhasai.monkeymart.data.ProductRepository
 import com.shubhasai.monkeymart.data.priceLabel
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import androidx.lifecycle.withResumed
 
 /** Today's deal for a product, shown as a popup. */
 class DealDialogFragment : DialogFragment() {
@@ -52,17 +49,17 @@ class DealDialogFragment : DialogFragment() {
 }
 
 /** Loads a product's detail and announces today's deal in a popup. */
-@OptIn(DelicateCoroutinesApi::class)
 object DealLoader {
-    fun load(activity: FragmentActivity, productId: Int, onLoaded: (Product) -> Unit) {
-        GlobalScope.launch(Dispatchers.Main) {
-            val product = ProductRepository.byId(productId)
-            onLoaded(product)
-            if (product.dealPercent > 0) {
-                DealDialogFragment
-                    .newInstance("${product.dealPercent}% off ${product.name}, today only.")
-                    .show(activity.supportFragmentManager, "deal")
-            }
+    suspend fun load(
+        productId: Int,
+        loadProduct: suspend (Int) -> Product = ProductRepository::byId,
+        onLoaded: (Product) -> Unit,
+        onDeal: suspend (String) -> Unit,
+    ) {
+        val product = loadProduct(productId)
+        onLoaded(product)
+        if (product.dealPercent > 0) {
+            onDeal("${product.dealPercent}% off ${product.name}, today only.")
         }
     }
 }
@@ -72,7 +69,15 @@ fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = M
     val activity = LocalContext.current as FragmentActivity
     var product by remember { mutableStateOf<Product?>(null) }
     LaunchedEffect(productId) {
-        DealLoader.load(activity, productId) { product = it }
+        DealLoader.load(
+            productId = productId,
+            onLoaded = { product = it },
+            onDeal = { message ->
+                activity.lifecycle.withResumed {
+                    DealDialogFragment.newInstance(message).show(activity.supportFragmentManager, "deal")
+                }
+            },
+        )
     }
 
     val loaded = product

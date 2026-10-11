@@ -73,8 +73,12 @@ fun CheckoutScreen(
 
         ScanCouponButton()
 
+        vm.error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("order_error"))
+        }
+
         Button(
-            onClick = { vm.placeOrder(orders, productId) },
+            onClick = { vm.placeOrder(orders::submit, productId) },
             enabled = vm.isComplete && !vm.placing,
             modifier = Modifier.fillMaxWidth().testTag("place_order"),
         ) {
