@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4PKSG1SPKNPAP99F3Q24X8W",
+  "session_id": "1d76e7fc-e616-4c9c-a78d-bb6adfe63f7d",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T23:11:58.669401Z",
+  "branch": "droid-monkey/visuals-1",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "app/src/androidTest/java/com/shubhasai/monkeymart/ShopScreenTapTest.kt",
+    "app/src/main/java/com/shubhasai/monkeymart/ui/ShopScreen.kt"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "3a237206422c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 14,
+    "cache_creation_tokens": 53631,
+    "cache_read_tokens": 73289,
+    "output_tokens": 1929,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-11T23:11:58.663748Z",
+    "agent_lines": 42,
+    "agent_removed": 1,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 42,
+    "total_lines_changed": 43,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 776,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".droid-monkey/.gitignore": 3,
+        ".droid-monkey/ANALYSIS.md": 69,
+        ".droid-monkey/analysis-run.json": 37,
+        ".droid-monkey/attacks/flow_background_during_deal_load.yaml": 15,
+        ".droid-monkey/attacks/flow_rotate_during_deal_load.yaml": 14,
+        ".droid-monkey/flows.json": 220,
+        ".droid-monkey/installed.json": 5,
+        ".droid-monkey/profile.json": 134,
+        ".droid-monkey/screen-map.json": 275,
+        "monkey.yaml": 4
+      }
+    }
+  ]
+}
