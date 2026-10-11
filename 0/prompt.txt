@@ -1,0 +1,77 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: 6 of 6 filled fields changed or emptied
+Fields lost (before -> after): {'field_name': ['Ravi Kumar', ''], 'field_email': ['ravi@example.com', ''], 'field_phone': ['9876543210', ''], 'field_address': ['12 MG Road', ''], 'field_city': ['Bengaluru', ''], 'field_pincode': ['560001', '']}
+
+## Diagnosis
+Root cause: The six delivery fields are plain `mutableStateOf` properties on `CheckoutViewModel`, whose only constructor takes no arguments and has no `SavedStateHandle` (CheckoutViewModel.kt:15-21). The composable reads and writes them directly (CheckoutScreen.kt:34, 67-72). When Android kills the process in the background, the ViewModel is discarded with it. On relaunch, `viewModel()` builds a new empty instance, so every field is blank and Place order stays disabled (CheckoutScreen.kt:82). Nothing in the design persists the input outside process memory.
+Fix approach: Give CheckoutViewModel a SavedStateHandle constructor parameter and back each field with it, for example `var name by savedStateHandle.saveable { mutableStateOf("") }` using the lifecycle-viewmodel-savedstate compose helper. The values then survive process death and are restored into the new ViewModel automatically. Keep the existing `viewModel()` call in CheckoutScreen, since the default factory supplies the SavedStateHandle. Optionally keep orderId and error out of the saved state, since they are transient.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:15 - `class CheckoutViewModel : ViewModel()` has no SavedStateHandle, so nothing can be persisted; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:16-21 - the six form fields are plain `mutableStateOf("")` held in process memory only; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:23-27 - placing, orderId and error are also plain in-memory state; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34 - `vm: CheckoutViewModel = viewModel()` recreates an empty ViewModel after the process is killed; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:67-72 - each OutlinedTextField is bound to the ViewModel field, so the blank restored state shows up as empty inputs; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:82 - Place order is enabled only when `vm.isComplete`, so the lost fields block the user from submitting
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+
+## Regression test
+Add a JVM unit test `CheckoutViewModelSavedStateTest` in src/test. Create a `SavedStateHandle` holding name="Ravi Kumar" and the other five values, construct `CheckoutViewModel(handle)`, and assert that `name`, `email`, `phone`, `address`, `city`, `pincode` and `isComplete` reflect the restored values. Before the fix, the constructor does not compile or the fields read as "", so the test fails. After the fix, it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+replay survived but com.shubhasai.monkeymart.CheckoutViewModelSavedStateTest failed:
+gationResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:compileDebugKotlin UP-TO-DATE
+> Task :app:processDebugJavaRes UP-TO-DATE
+> Task :app:compileDebugJavaWithJavac NO-SOURCE
+> Task :app:processDebugResources UP-TO-DATE
+> Task :app:bundleDebugClassesToRuntimeJar
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:compileDebugUnitTestKotlin
+> Task :app:compileDebugUnitTestJavaWithJavac NO-SOURCE
+> Task :app:processDebugUnitTestJavaRes UP-TO-DATE
+
+> Task :app:testDebugUnitTest FAILED
+
+CheckoutViewModelSavedStateTest > formFields_areRestoredFromSavedStateHandle FAILED
+    org.junit.ComparisonFailure at CheckoutViewModelSavedStateTest.kt:27
+24 actionable tasks: 4 executed, 20 up-to-date
+Configuration cache entry stored.
+
+2 tests completed, 1 failed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:testDebugUnitTest'.
+> There were failing tests. See the report at: file:///Users/shubhasai/Documents/neat-hack/MonkeyMart/app/build/reports/tests/testDebugUnitTest/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+BUILD FAILED in 1s
+
+The diagnosis was revised:
+Root cause: The earlier premise is stale: CheckoutViewModel.kt:17 already takes a SavedStateHandle, and lines 18-23 bind each field with `savedStateHandle.saveable { mutableStateOf("") }`. That delegate is a Compose-state bridge, so the value reaches the handle only through a deferred saved-state provider, not on each write. Its restore path is therefore indirect, and the JVM test (CheckoutViewModelSavedStateTest, failing at line 27) gets back "" instead of the seeded value. The failing assertion's expected and actual values are not in the log, and I could not read the test file, so this is inferred from the code rather than confirmed. Android's process death is handled by the same handle, so the field values are lost unless the handle itself holds them as plain values. The screen still reads and writes the delegated properties (CheckoutScreen.kt:34, 67-72).
+Fix approach: Store each field directly in the SavedStateHandle with a synchronous get/set (or `getStateFlow`) keyed by the field name, and expose it to Compose through a small observable copy that is updated on every write. Drop the `saveable` delegate for the six form fields. Keep `viewModel()` in CheckoutScreen unchanged, since the default factory supplies the handle. Leave orderId, placing and error as transient state.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+
+Rework the fix (and the test if needed) following the same rules. Do not commit.
