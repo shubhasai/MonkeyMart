@@ -3,6 +3,7 @@ package com.shubhasai.monkeymart.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.os.Handler
@@ -17,37 +18,54 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 
 /** Opens the camera to scan a coupon code at checkout. */
 object CouponScanner {
-    private const val PREFS = "monkeymart_prefs"
-    private const val KEY_CAMERA_GRANTED = "camera_granted"
+    const val MSG_PERMISSION_NEEDED = "Camera permission is needed to scan coupons"
+    const val MSG_CAMERA_UNAVAILABLE = "Camera is unavailable right now"
 
+    /** Asks the OS every time: the user can revoke the permission in Settings at any moment. */
     fun hasCameraAccess(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CAMERA_GRANTED, false)
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
-    fun rememberCameraGranted(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CAMERA_GRANTED, true).apply()
+    fun open(context: Context, onResult: (String) -> Unit) =
+        open(hasCameraAccess(context), onResult) { report -> openCameraDevice(context, report) }
+
+    internal fun open(hasPermission: Boolean, onResult: (String) -> Unit, openDevice: ((String) -> Unit) -> Unit) {
+        if (!hasPermission) return onResult(MSG_PERMISSION_NEEDED)
+        try {
+            openDevice(onResult)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // SecurityException if permission was revoked, CameraAccessException if the camera is busy/disabled.
+            onResult(MSG_CAMERA_UNAVAILABLE)
+        }
     }
 
     @SuppressLint("MissingPermission")
-    fun open(context: Context, onResult: (String) -> Unit) {
+    private fun openCameraDevice(context: Context, onResult: (String) -> Unit) {
         val cameras = context.getSystemService(CameraManager::class.java)
-        val cameraId = cameras.cameraIdList.firstOrNull() ?: return onResult("No camera on this device")
+        val cameraId = cameras?.cameraIdList?.firstOrNull() ?: return onResult("No camera on this device")
         cameras.openCamera(cameraId, object : CameraDevice.StateCallback() {
             override fun onOpened(camera: CameraDevice) {
                 camera.close()
                 onResult("Scanner ready: point the camera at your coupon")
             }
 
-            override fun onDisconnected(camera: CameraDevice) = camera.close()
+            override fun onDisconnected(camera: CameraDevice) {
+                camera.close()
+                onResult(MSG_CAMERA_UNAVAILABLE)
+            }
 
             override fun onError(camera: CameraDevice, error: Int) {
                 camera.close()
@@ -60,13 +78,12 @@ object CouponScanner {
 @Composable
 fun ScanCouponButton(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var status by remember { mutableStateOf("") }
+    var status by rememberSaveable { mutableStateOf("") }
     val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            CouponScanner.rememberCameraGranted(context)
             CouponScanner.open(context) { status = it }
         } else {
-            status = "Camera permission is needed to scan coupons"
+            status = CouponScanner.MSG_PERMISSION_NEEDED
         }
     }
 

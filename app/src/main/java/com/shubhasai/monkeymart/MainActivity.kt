@@ -44,15 +44,15 @@ sealed interface Route {
     data class Checkout(val productId: Int) : Route
 }
 
-private fun Route.encode(): String = when (this) {
+internal fun Route.encode(): String = when (this) {
     Route.Shop -> "shop"
     is Route.Detail -> "detail:$productId"
     is Route.Checkout -> "checkout:$productId"
 }
 
-private fun decodeRoute(raw: String): Route = when {
-    raw.startsWith("detail:") -> Route.Detail(raw.removePrefix("detail:").toInt())
-    raw.startsWith("checkout:") -> Route.Checkout(raw.removePrefix("checkout:").toInt())
+internal fun decodeRoute(raw: String): Route = when {
+    raw.startsWith("detail:") -> raw.removePrefix("detail:").toIntOrNull()?.let { Route.Detail(it) } ?: Route.Shop
+    raw.startsWith("checkout:") -> raw.removePrefix("checkout:").toIntOrNull()?.let { Route.Checkout(it) } ?: Route.Shop
     else -> Route.Shop
 }
 

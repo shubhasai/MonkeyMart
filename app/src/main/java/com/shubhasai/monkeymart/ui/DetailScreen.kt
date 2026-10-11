@@ -1,86 +1,59 @@
 package com.shubhasai.monkeymart.ui
 
-import android.app.AlertDialog
-import android.app.Dialog
-import android.os.Bundle
-import androidx.core.os.bundleOf
-import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.shubhasai.monkeymart.data.Product
-import com.shubhasai.monkeymart.data.ProductRepository
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.shubhasai.monkeymart.data.priceLabel
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-
-/** Today's deal for a product, shown as a popup. */
-class DealDialogFragment : DialogFragment() {
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
-        AlertDialog.Builder(requireContext())
-            .setTitle("Deal unlocked")
-            .setMessage(requireArguments().getString(ARG_MESSAGE))
-            .setPositiveButton("Nice", null)
-            .create()
-
-    companion object {
-        private const val ARG_MESSAGE = "message"
-        fun newInstance(message: String) = DealDialogFragment().apply { arguments = bundleOf(ARG_MESSAGE to message) }
-    }
-}
-
-/** Loads a product's detail and announces today's deal in a popup. */
-@OptIn(DelicateCoroutinesApi::class)
-object DealLoader {
-    fun load(activity: FragmentActivity, productId: Int, onLoaded: (Product) -> Unit) {
-        GlobalScope.launch(Dispatchers.Main) {
-            val product = ProductRepository.byId(productId)
-            onLoaded(product)
-            if (product.dealPercent > 0) {
-                DealDialogFragment
-                    .newInstance("${product.dealPercent}% off ${product.name}, today only.")
-                    .show(activity.supportFragmentManager, "deal")
-            }
-        }
-    }
-}
 
 @Composable
-fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val activity = LocalContext.current as FragmentActivity
-    var product by remember { mutableStateOf<Product?>(null) }
-    LaunchedEffect(productId) {
-        DealLoader.load(activity, productId) { product = it }
-    }
-
-    val loaded = product
+fun DetailScreen(
+    productId: Int,
+    onBuyNow: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    vm: DetailViewModel = viewModel(key = "detail_$productId") {
+        DetailViewModel(productId, createSavedStateHandle())
+    },
+) {
+    val loaded = vm.product
     if (loaded == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(Modifier.testTag("detail_loading"))
+            if (vm.loadFailed) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Couldn't load this product.", modifier = Modifier.testTag("detail_error"))
+                    Button(onClick = { vm.load() }, modifier = Modifier.testTag("detail_retry")) { Text("Retry") }
+                }
+            } else {
+                CircularProgressIndicator(Modifier.testTag("detail_loading"))
+            }
         }
         return
+    }
+
+    if (loaded.dealPercent > 0 && !vm.dealDismissed) {
+        AlertDialog(
+            onDismissRequest = { vm.dismissDeal() },
+            title = { Text("Deal unlocked") },
+            text = { Text("${loaded.dealPercent}% off ${loaded.name}, today only.") },
+            confirmButton = { TextButton(onClick = { vm.dismissDeal() }) { Text("Nice") } },
+            modifier = Modifier.testTag("deal_dialog"),
+        )
     }
 
     Column(

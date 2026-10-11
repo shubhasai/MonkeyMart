@@ -17,20 +17,24 @@ data class OrderRequest(
     val pincode: String,
 )
 
+fun interface OrderSubmitter {
+    /** Places the order and returns its id. */
+    suspend fun submit(order: OrderRequest): String
+}
+
 /** Talks to the (fake) orders backend. Needs a working network connection, like the real one. */
-class OrderRepository(context: Context) {
+class OrderRepository(context: Context) : OrderSubmitter {
 
     private val connectivity = context.applicationContext.getSystemService(ConnectivityManager::class.java)
 
-    /** Places the order and returns its id. */
-    suspend fun submit(order: OrderRequest): String {
+    override suspend fun submit(order: OrderRequest): String {
         if (!isOnline()) throw IOException("Unable to reach orders.monkeymart.example: no network")
         delay(1_500)
         return "MM-%06d".format(Random.nextInt(1_000_000))
     }
 
     private fun isOnline(): Boolean {
-        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        val caps = connectivity?.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 }
