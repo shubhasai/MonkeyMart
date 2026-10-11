@@ -1,0 +1,27 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: 6 of 6 filled fields changed or emptied
+Fields lost (before -> after): {'field_name': ['Ravi Kumar', ''], 'field_email': ['ravi@example.com', ''], 'field_phone': ['9876543210', ''], 'field_address': ['12 MG Road', ''], 'field_city': ['Bengaluru', ''], 'field_pincode': ['560001', '']}
+
+## Diagnosis
+Root cause: The checkout form's six fields are plain `mutableStateOf` properties on `CheckoutViewModel` (CheckoutViewModel.kt:17-22), and the ViewModel is constructed with no `SavedStateHandle`. The navigation route survives process death because `MainActivity` stores it with `rememberSaveable` (MainActivity.kt:62), so the app restores to the Checkout screen. But the ViewModel is recreated empty, and the `CheckoutScreen` fields bind to its empty properties (CheckoutScreen.kt:34, 67-72). Process death therefore wipes the typed data while the screen itself comes back.
+Fix approach: Take a `SavedStateHandle` as the first constructor argument and back each field with it, e.g. `val name get() = handle.getStateFlow(...)` or a delegate that reads and writes `handle["field_name"]`, so values go into the saved-instance bundle and survive process death. Keep the `scope` parameter optional after the handle so the default `viewModel()` factory can supply it. The screen code can stay as it is, since it still reads and writes the same properties.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:14 - ViewModel takes only an optional CoroutineScope; no SavedStateHandle; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:17-22 - the six form fields are plain mutableStateOf(""), so they are not saved and are lost when the process dies; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:32 - isComplete is derived from those unsaved fields, so the Place order button comes back disabled; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34 - vm defaults to viewModel(), which is recreated empty after process death; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:67-72 - each OutlinedTextField binds to vm.name...vm.pincode, so the screen shows the empty values after restore; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:62 - the route is kept with rememberSaveable, so the user returns to Checkout but the form state behind it is gone
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+
+## Regression test
+Add a JVM unit test `CheckoutViewModelStateTest` in src/test. It constructs `CheckoutViewModel(SavedStateHandle())`, sets `name = "Ravi Kumar"` and `pincode = "560001"`, then asserts that `handle.get<String>("field_name")` and `handle.get<String>("field_pincode")` hold those values. Before the fix this fails because the handle does not exist as a constructor parameter and the values stay in plain state. After the fix it passes. Optionally, add a second assertion that a new VM built from the same handle contents reports `isComplete == true`.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
