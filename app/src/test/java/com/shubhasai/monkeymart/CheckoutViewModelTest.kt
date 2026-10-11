@@ -1,5 +1,6 @@
 package com.shubhasai.monkeymart
 
+import androidx.lifecycle.SavedStateHandle
 import com.shubhasai.monkeymart.ui.CheckoutViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +9,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 
@@ -22,6 +24,30 @@ class CheckoutViewModelTest {
         assertFalse(vm.placing)
         assertNull(vm.orderId)
         assertNotNull(vm.error)
+    }
+
+    @Test
+    fun formFields_surviveProcessDeath() {
+        val handle = SavedStateHandle()
+        val original = CheckoutViewModel(handle)
+        original.name = "Ravi Kumar"
+        original.email = "ravi@example.com"
+        original.phone = "9876543210"
+        original.address = "12 MG Road"
+        original.city = "Bengaluru"
+        original.pincode = "560001"
+
+        val restored = CheckoutViewModel(
+            SavedStateHandle(handle.keys().associateWith { handle.get<Any?>(it) })
+        )
+
+        assertEquals(original.name, restored.name)
+        assertEquals(original.email, restored.email)
+        assertEquals(original.phone, restored.phone)
+        assertEquals(original.address, restored.address)
+        assertEquals(original.city, restored.city)
+        assertEquals(original.pincode, restored.pincode)
+        assertTrue(restored.isComplete)
     }
 
     @Test
