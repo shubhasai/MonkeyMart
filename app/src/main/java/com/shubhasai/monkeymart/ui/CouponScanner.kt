@@ -3,6 +3,7 @@ package com.shubhasai.monkeymart.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.os.Handler
@@ -24,17 +25,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 
 /** Opens the camera to scan a coupon code at checkout. */
 object CouponScanner {
-    private const val PREFS = "monkeymart_prefs"
-    private const val KEY_CAMERA_GRANTED = "camera_granted"
-
     fun hasCameraAccess(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_CAMERA_GRANTED, false)
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
-    fun rememberCameraGranted(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_CAMERA_GRANTED, true).apply()
+    /** Permission can be revoked at any time (e.g. from Settings), so always ask the system, never a cached flag. */
+    internal fun onScanClicked(hasCameraAccess: () -> Boolean, open: () -> Unit, requestPermission: () -> Unit) {
+        if (hasCameraAccess()) open() else requestPermission()
     }
 
     @SuppressLint("MissingPermission")
@@ -63,7 +63,6 @@ fun ScanCouponButton(modifier: Modifier = Modifier) {
     var status by remember { mutableStateOf("") }
     val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            CouponScanner.rememberCameraGranted(context)
             CouponScanner.open(context) { status = it }
         } else {
             status = "Camera permission is needed to scan coupons"
@@ -73,11 +72,11 @@ fun ScanCouponButton(modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(
             onClick = {
-                if (CouponScanner.hasCameraAccess(context)) {
-                    CouponScanner.open(context) { status = it }
-                } else {
-                    askCamera.launch(Manifest.permission.CAMERA)
-                }
+                CouponScanner.onScanClicked(
+                    hasCameraAccess = { CouponScanner.hasCameraAccess(context) },
+                    open = { CouponScanner.open(context) { status = it } },
+                    requestPermission = { askCamera.launch(Manifest.permission.CAMERA) },
+                )
             },
             modifier = Modifier.testTag("scan_coupon"),
         ) { Text("Scan coupon") }
