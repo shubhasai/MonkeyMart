@@ -1,0 +1,44 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `permission_revoke` (permission_revoke): Grant a permission through the app, revoke it the way Settings does, come back and use the feature again.
+Steps: [{"tap": "scan_coupon"}, {"accept_permission": true}, {"settle": 3}, {"fault": "revoke_permission", "permission": "android.permission.CAMERA"}, {"restart_to_screen": true}, {"tap": "scan_coupon"}, {"settle": 4.0}]
+Result: crashed: java.lang.SecurityException: validateClientPermissionsLocked:1848: Caller "com.shubhasai.monkeymart" (PID 11563, UID 10236) cannot open camera "1" without camera permission
+Crash: java.lang.SecurityException @ com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt.ScanCouponButton$lambda$9$lambda$8$lambda$7(CouponScanner.kt:77)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: The coupon scanner decides whether it may open the camera from a persisted SharedPreferences flag, `camera_granted`, that is set to true once and never cleared (CouponScanner.kt:33-38). The button's onClick at CouponScanner.kt:76-77 trusts that flag and calls `CouponScanner.open` directly, which calls `CameraManager.openCamera` at line 44 with no permission check. When the user revokes CAMERA in Settings, the process restarts, the stale flag still says true, and the open call throws SecurityException. The design error is caching a runtime permission state instead of asking the system at the moment of use.
+Fix approach: Drop the SharedPreferences flag. In the onClick, check `ContextCompat.checkSelfPermission(context, CAMERA)` at use time and only call `open` when it returns GRANTED; otherwise launch the permission request. Also wrap the `openCamera` call in a try/catch for SecurityException and surface a status message, so a revocation that happens between the check and the open does not crash the app.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:31-38 - the 'camera_granted' SharedPreferences flag is written to true on grant and read back as the access check; nothing clears it or re-checks the live permission; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:76-77 - onClick opens the camera whenever the cached flag is true, without checking the permission; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:43-44 - cameraIdList and openCamera run with no permission check; this is where the SecurityException is thrown after revocation; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:64-67 - the only place the flag is set, in the permission-result callback, so it is never reset when the permission is later revoked; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:74 - ScanCouponButton is the only entry point to the scanner on the checkout form
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt
+
+## Regression test
+Add an instrumented test in src/androidTest, CouponScannerPermissionTest. Grant CAMERA, open checkout, tap scan_coupon, then revoke CAMERA with `pm revoke` (or UiAutomation.revokeRuntimePermission) and restart the activity. Tap scan_coupon again and assert the app does not crash and that the coupon_status text shows the permission prompt or a camera-permission message instead of the scanner. Before the fix this test crashes with SecurityException at CouponScanner.kt:44; after the fix it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+replay survived but com.shubhasai.monkeymart.CouponScannerPermissionTest failed:
+e: file:///Users/shubhasai/Documents/neat-hack/MonkeyMart/app/src/androidTest/java/com/shubhasai/monkeymart/CouponScannerPermissionTest.kt:52:18 Unresolved reference 'getOrNull'.
+e: file:///Users/shubhasai/Documents/neat-hack/MonkeyMart/app/src/androidTest/java/com/shubhasai/monkeymart/CouponScannerPermissionTest.kt:53:37 Unresolved reference 'text'.
+
+The diagnosis was revised:
+Root cause: The scan button gates on a point-in-time ContextCompat.checkSelfPermission (CouponScanner.kt:35, 76) and then calls CouponScanner.open (line 77) with no retry or fallback. The only SecurityException handler is around cameraManager.openCamera (CouponScanner.kt:41-57); the cameraIdList lookup at line 40 is unguarded, and the scanner has no path to re-request the permission when the camera service rejects the open. The crash trace shows the granted branch was taken and the camera service still rejected the open, so the app's permission view and the camera service's view disagreed after the restart. The previous diagnosis cited a camera_granted SharedPreferences flag that does not exist in this file, so it was wrong.
+Fix approach: Make CouponScanner.open the single guarded entry point: wrap the whole body, including the cameraIdList lookup, in try/catch for SecurityException and CameraAccessException, and on SecurityException report PERMISSION_NEEDED instead of throwing. In the onClick, keep the live hasCameraAccess check, but route a SecurityException back to askCamera.launch so the user is re-prompted rather than left with a status string. Do not cache the permission state anywhere.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt
+
+Rework the fix (and the test if needed) following the same rules. Do not commit.
