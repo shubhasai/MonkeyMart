@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.fragment.app.FragmentActivity
+import com.shubhasai.monkeymart.ui.CheckoutScreen
 import com.shubhasai.monkeymart.ui.DetailScreen
 import com.shubhasai.monkeymart.ui.ShopScreen
 import com.shubhasai.monkeymart.ui.theme.MonkeyMartTheme
@@ -40,15 +41,18 @@ class MainActivity : FragmentActivity() {
 sealed interface Route {
     data object Shop : Route
     data class Detail(val productId: Int) : Route
+    data class Checkout(val productId: Int) : Route
 }
 
 private fun Route.encode(): String = when (this) {
     Route.Shop -> "shop"
     is Route.Detail -> "detail:$productId"
+    is Route.Checkout -> "checkout:$productId"
 }
 
 private fun decodeRoute(raw: String): Route = when {
     raw.startsWith("detail:") -> Route.Detail(raw.removePrefix("detail:").toInt())
+    raw.startsWith("checkout:") -> Route.Checkout(raw.removePrefix("checkout:").toInt())
     else -> Route.Shop
 }
 
@@ -59,7 +63,9 @@ fun MonkeyMartApp() {
     val route = decodeRoute(rawRoute)
     fun go(to: Route) { rawRoute = to.encode() }
 
-    BackHandler(enabled = route != Route.Shop) { go(Route.Shop) }
+    BackHandler(enabled = route != Route.Shop) {
+        go(if (route is Route.Checkout) Route.Detail(route.productId) else Route.Shop)
+    }
 
     Scaffold(
         modifier = Modifier
@@ -70,7 +76,8 @@ fun MonkeyMartApp() {
         val content = Modifier.padding(padding)
         when (route) {
             Route.Shop -> ShopScreen(onProductClick = { go(Route.Detail(it)) }, modifier = content)
-            is Route.Detail -> DetailScreen(route.productId, onBuyNow = { }, modifier = content)
+            is Route.Detail -> DetailScreen(route.productId, onBuyNow = { go(Route.Checkout(it)) }, modifier = content)
+            is Route.Checkout -> CheckoutScreen(route.productId, modifier = content)
         }
     }
 }
