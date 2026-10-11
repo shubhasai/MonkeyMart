@@ -1,0 +1,33 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `network_loss` (network_loss): Drop the network, then trigger the screen's submit or slow action; the app must not crash or go silent.
+Steps: [{"fill": true}, {"fault": "network_off"}, {"tap": "place_order"}, {"settle": 5.3}]
+Result: crashed: java.io.IOException: Unable to reach orders.monkeymart.example: no network
+Crash: java.io.IOException @ com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel$placeOrder$1.invokeSuspend(CheckoutViewModel.kt:32)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel.placeOrder(CheckoutViewModel.kt:31)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt.CheckoutScreen$lambda$20$lambda$18$lambda$17(CheckoutScreen.kt:77)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt$$ExternalSyntheticLambda9.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: OrderRepository.submit throws IOException when the active network has no INTERNET capability (OrderRepository.kt:27). CheckoutViewModel.placeOrder launches that call in viewModelScope with no try/catch (CheckoutViewModel.kt:31-34), so the exception escapes the coroutine and kills the app. Even if it were caught, `placing` is only reset on the success path (line 33), so the button would stay in the spinner state with no message. The design gap is that a recoverable network failure is treated as a programmer error, and the ViewModel has no failure state for the UI to show.
+Fix approach: In CheckoutViewModel, wrap orders.submit in try/catch(IOException) inside the launched coroutine. Store the failure in an observable `error` state and always reset `placing` in a finally block. CheckoutScreen should render that error as a message with a retry path, and keep the form values, which already survive in the ViewModel. Optionally, inject the repository or submit function so the ViewModel can be tested without a Context.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:27 - submit throws IOException when isOnline() is false; app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:32-35 - isOnline checks activeNetwork INTERNET capability, so a network drop reaches the throw; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:31-34 - viewModelScope.launch calls orders.submit with no try/catch; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:30,33 - placing is set true before submit and reset only after success; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:76-78 - the Place order button calls vm.placeOrder with no error handling and no failure state rendered; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:38 - OrderRepository is created in the composable with remember, so it is not injected or testable
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt
+
+## Regression test
+Add src/test/.../ui/CheckoutViewModelTest.kt. Extract a small submit interface (or pass a lambda) so the test can supply a fake that throws IOException. Fill all fields, call placeOrder, and assert that the test does not throw, that placing is false afterwards, that orderId is null, and that error is non-null. Before the fix the exception escapes viewModelScope and fails the test; after the fix it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
