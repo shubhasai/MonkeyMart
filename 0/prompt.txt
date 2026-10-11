@@ -1,0 +1,26 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: 6 of 6 filled fields changed or emptied
+Fields lost (before -> after): {'field_name': ['Ravi Kumar', ''], 'field_email': ['ravi@example.com', ''], 'field_phone': ['9876543210', ''], 'field_address': ['12 MG Road', ''], 'field_city': ['Bengaluru', ''], 'field_pincode': ['560001', '']}
+
+## Diagnosis
+Root cause: Not diagnosed (naive baseline run).
+Fix approach: 
+Evidence: -
+
+## Files to change
+Not diagnosed: find the root cause and the files to change yourself.
+
+## Regression test
+Add one regression test that fails before the fix and passes after it.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
