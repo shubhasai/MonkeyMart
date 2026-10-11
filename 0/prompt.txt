@@ -1,0 +1,27 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: 6 of 6 filled fields changed or emptied
+Fields lost (before -> after): {'field_name': ['Ravi Kumar', ''], 'field_email': ['ravi@example.com', ''], 'field_phone': ['9876543210', ''], 'field_address': ['12 MG Road', ''], 'field_city': ['Bengaluru', ''], 'field_pincode': ['560001', '']}
+
+## Diagnosis
+Root cause: The checkout form's six fields are plain `mutableStateOf` properties on `CheckoutViewModel` (CheckoutViewModel.kt:14-19), and the ViewModel is obtained via the default `viewModel()` factory with no SavedStateHandle (CheckoutScreen.kt:34). A ViewModel survives only configuration changes, not process death, so when Android kills the backgrounded app the VM and all typed input are discarded. MainActivity does persist the route with `rememberSaveable` (MainActivity.kt:62), so the user lands back on the checkout screen, but it is a freshly constructed ViewModel with every field blank, which is exactly the observed loss (all six fields emptied). The form's state was never put anywhere that survives process death.
+Fix approach: Make the form state survive process death by backing each field with SavedStateHandle (e.g. `private val saved: SavedStateHandle` with `saved.getStateFlow("name", "")` or a `saved["name"]` setter-backed property) so the values are written to the saved-state bundle. Inject it via the default ViewModel factory (`viewModel()` provides SavedStateHandle automatically when the ViewModel constructor takes it), so no extra factory is needed. Alternatively use `rememberSaveable` for each field in CheckoutScreen, but the ViewModel-with-SavedStateHandle route keeps the fields in one place alongside placeOrder.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:13-19 - ViewModel has no SavedStateHandle; six form fields are plain mutableStateOf, lost when the process is killed; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:27 - isComplete depends only on those in-memory fields, so it is false after restore and Place order stays disabled; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34 - vm = viewModel() uses the default factory with no saved-state handle wiring; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:67-72 - each CheckoutField reads and writes the VM's in-memory property directly, with no rememberSaveable backing; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:62 - route is persisted with rememberSaveable, so the screen is restored while the form data is not, which produces the blank-form symptom; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:80 - CheckoutScreen(route.productId) is hosted without any form state being passed in or saved
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt
+
+## Regression test
+Add a JVM unit test `CheckoutViewModelProcessDeathTest` in src/test: create `CheckoutViewModel(SavedStateHandle())`, set name='Ravi Kumar', email, phone, address, city, pincode, then build a second ViewModel from a SavedStateHandle restored from the first one's saved state (e.g. `SavedStateHandle(mapOf(...))` copied from the first handle's `savedStateProvider().saveState()` or simply reuse the handle's values) and assert every field equals the original and `isComplete` is true. Before the fix the constructor takes no SavedStateHandle, so the test fails to compile/returns blank values; after the fix it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
