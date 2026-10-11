@@ -2,15 +2,25 @@ package com.shubhasai.monkeymart
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
+import com.shubhasai.monkeymart.ui.ShopScreen
 import com.shubhasai.monkeymart.ui.theme.MonkeyMartTheme
 
 class MainActivity : ComponentActivity() {
@@ -19,29 +29,43 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MonkeyMartTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+                MonkeyMartApp()
             }
         }
     }
 }
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
+/** Screens are addressed by a small route string so the back stack survives recreation. */
+sealed interface Route {
+    data object Shop : Route
 }
 
-@Preview(showBackground = true)
+private fun Route.encode(): String = when (this) {
+    Route.Shop -> "shop"
+}
+
+private fun decodeRoute(raw: String): Route = when {
+    else -> Route.Shop
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
-fun GreetingPreview() {
-    MonkeyMartTheme {
-        Greeting("Android")
+fun MonkeyMartApp() {
+    var rawRoute by rememberSaveable { mutableStateOf(Route.Shop.encode()) }
+    val route = decodeRoute(rawRoute)
+    fun go(to: Route) { rawRoute = to.encode() }
+
+    BackHandler(enabled = route != Route.Shop) { go(Route.Shop) }
+
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics { testTagsAsResourceId = true },
+        topBar = { TopAppBar(title = { Text("MonkeyMart") }) },
+    ) { padding ->
+        val content = Modifier.padding(padding)
+        when (route) {
+            Route.Shop -> ShopScreen(onProductClick = { }, modifier = content)
+        }
     }
 }
