@@ -5,12 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.shubhasai.monkeymart.data.OrderRepository
 import com.shubhasai.monkeymart.data.OrderRequest
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /** Holds the checkout form while the user fills it in. */
-class CheckoutViewModel : ViewModel() {
+class CheckoutViewModel(scope: CoroutineScope? = null) : ViewModel() {
+    private val scope: CoroutineScope = scope ?: viewModelScope
+
     var name by mutableStateOf("")
     var email by mutableStateOf("")
     var phone by mutableStateOf("")
@@ -22,15 +25,23 @@ class CheckoutViewModel : ViewModel() {
         private set
     var orderId by mutableStateOf<String?>(null)
         private set
+    var error by mutableStateOf<String?>(null)
+        private set
 
     val isComplete: Boolean
         get() = listOf(name, email, phone, address, city, pincode).all { it.isNotBlank() }
 
-    fun placeOrder(orders: OrderRepository, productId: Int) {
+    fun placeOrder(submit: suspend (OrderRequest) -> String, productId: Int) {
         placing = true
-        viewModelScope.launch {
-            orderId = orders.submit(OrderRequest(productId, name, email, phone, address, city, pincode))
-            placing = false
+        error = null
+        scope.launch {
+            try {
+                orderId = submit(OrderRequest(productId, name, email, phone, address, city, pincode))
+            } catch (e: IOException) {
+                error = "No network, try again"
+            } finally {
+                placing = false
+            }
         }
     }
 }
