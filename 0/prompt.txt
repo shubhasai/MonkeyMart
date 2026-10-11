@@ -1,0 +1,29 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `permission_revoke` (permission_revoke): Grant a permission through the app, revoke it the way Settings does, come back and use the feature again.
+Steps: [{"tap": "scan_coupon"}, {"accept_permission": true}, {"settle": 3}, {"fault": "revoke_permission", "permission": "android.permission.CAMERA"}, {"restart_to_screen": true}, {"tap": "scan_coupon"}, {"settle": 4.0}]
+Result: crashed: java.lang.SecurityException: validateClientPermissionsLocked:1848: Caller "com.shubhasai.monkeymart" (PID 31413, UID 10234) cannot open camera "1" without camera permission
+Crash: java.lang.SecurityException @ com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt.ScanCouponButton$lambda$9$lambda$8$lambda$7(CouponScanner.kt:77)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: The app records camera consent in a SharedPreferences boolean (`camera_granted`) once the permission is granted (CouponScanner.kt:36-38, 66) and never re-checks the real runtime permission. `hasCameraAccess` (CouponScanner.kt:33-34) reads only that flag, so after Settings revokes CAMERA the button's onClick (CouponScanner.kt:76-77) skips the permission request and calls `open()` directly. `open()` calls `cameras.openCamera` (CouponScanner.kt:44) with no permission check and no exception handling, so the framework throws SecurityException on the main thread and the app crashes. The `@SuppressLint("MissingPermission")` on line 40 hides the missing check from the compiler.
+Fix approach: Drop the persisted flag and check the live grant with ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PERMISSION_GRANTED in the button's onClick. Launch the RequestPermission contract only when it is not granted. Also wrap cameras.openCamera in try/catch for SecurityException (and CameraAccessException) and report the failure through onResult, so a revoke between the check and the open cannot crash the app.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:33-34 - hasCameraAccess reads only a SharedPreferences boolean, not the runtime permission; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:36-38 - rememberCameraGranted persists 'camera_granted=true' and nothing clears it; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:40-44 - open() is annotated MissingPermission and calls openCamera with no checkSelfPermission and no try/catch; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:64-67 - the permission launcher is the only place the flag is set, after a grant; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:76-77 - the button opens the camera directly whenever the stale flag is true, so the permission prompt is skipped after revoke; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:74 - ScanCouponButton is embedded in the checkout form, which is the screen the attack reached
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt
+
+## Regression test
+Add a JVM unit test CouponScannerPermissionTest in src/test (Robolectric or a fake Context) that stores camera_granted=true in prefs, makes checkSelfPermission return DENIED, invokes the scan path, and asserts that no open is attempted and that the permission request is launched. Before the fix it fails because open() is called from the stored flag. After the fix it passes. A companion instrumented test in src/androidTest can revoke CAMERA with UiAutomation and confirm the screen shows the 'Camera permission is needed' status without crashing.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
