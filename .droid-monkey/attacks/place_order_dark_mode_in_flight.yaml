@@ -1,0 +1,17 @@
+name: place_order_dark_mode_in_flight
+fault_type: configuration_change
+description: Switch system dark mode while the order is being placed, then check the
+  app survives the activity recreation without losing the delivery form.
+screen: se0e88a
+steps:
+- fill: true
+- tap: place_order
+- wait: 0.5
+- fault: dark_mode
+  enabled: true
+- settle: 8
+expect:
+- no_crash
+- keeps_fields
+flow: place_order
+source: prompt
