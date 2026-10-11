@@ -1,0 +1,28 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `rotation` (rotation): Rotate the device while work started by a tap is still running, or on a filled form.
+Steps: [{"fill": true}, {"tap": "product_1"}, {"wait": 1.2}, {"fault": "rotate"}, {"settle": 8.0}]
+Result: crashed: java.lang.IllegalStateException: FragmentManager has been destroyed
+Crash: java.lang.IllegalStateException @ com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+  at com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+
+## Diagnosis
+Root cause: DealLoader.load launches work in GlobalScope (DetailScreen.kt:58), so the coroutine is not cancelled when DetailScreen leaves composition. The LaunchedEffect at DetailScreen.kt:74-75 cancels its own work on rotation, but the GlobalScope coroutine keeps running, sleeps through the Activity destruction, and then calls activity.supportFragmentManager.show(...) at line 64 on a FragmentActivity that is already destroyed. Rotation recreates the Activity and MainActivity restores the same Detail route from rememberSaveable (MainActivity.kt:62, 79), so the screen reloads, but the orphaned coroutine still holds the old Activity and throws. The design flaw is an unscoped coroutine that captures a UI-bound Activity and its FragmentManager.
+Fix approach: Remove GlobalScope and the captured FragmentActivity from the load path. Make DealLoader.load a suspend function that returns the product and the optional deal message, and call it from the composable's LaunchedEffect so it is cancelled on rotation. Show the deal popup only while the UI is alive, either through a lifecycle-aware collection (repeatOnLifecycle(RESUMED)) or by storing the message in state and showing the DialogFragment from a resumed owner. Do not call show() on a FragmentManager that may be destroyed or state-saved.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:57-58 - DealLoader.load launches in GlobalScope.launch(Dispatchers.Main), which is never cancelled by the composition; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:59-60 - the coroutine suspends on ProductRepository.byId and then continues after the Activity may have been destroyed; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:64 - .show(activity.supportFragmentManager, ...) runs on a captured Activity's FragmentManager after rotation destroyed it, which throws 'FragmentManager has been destroyed'; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:72-76 - the Activity is captured from LocalContext and passed into the load, and LaunchedEffect triggers the load on composition; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:62-79 - the route is saved with rememberSaveable, so rotation recreates the Activity and re-enters DetailScreen, starting a second load while the first GlobalScope coroutine is still alive
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+## Regression test
+Add a JVM unit test DealLoaderTest in src/test. Make the deal decision a pure suspend function that takes a product loader and an onDeal callback, with no Activity. Assert two things: (1) for a product with dealPercent > 0, the callback receives the expected '% off' message exactly once; (2) when the calling coroutine (TestScope) is cancelled before the loader resumes, onDeal is never invoked. Test (2) fails on the current GlobalScope code, because the launch ignores cancellation and still calls show, and passes after the fix.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
