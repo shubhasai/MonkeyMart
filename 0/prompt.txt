@@ -1,0 +1,28 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `rotation` (rotation): Rotate the device while work started by a tap is still running, or on a filled form.
+Steps: [{"fill": true}, {"tap": "product_1"}, {"wait": 1.2}, {"fault": "rotate"}, {"settle": 8.0}]
+Result: crashed: java.lang.IllegalStateException: FragmentManager has been destroyed
+Crash: java.lang.IllegalStateException @ com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+  at com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+
+## Diagnosis
+Root cause: DetailScreen's LaunchedEffect calls DealLoader.load(activity, ...) (DetailScreen.kt:74-75), which launches on GlobalScope (DetailScreen.kt:58), so the coroutine is not cancelled when the composition leaves. MainActivity keeps the Detail route in rememberSaveable (MainActivity.kt:62), so after rotation the new activity relaunches the load while the old coroutine is still running against the old activity. When that coroutine resumes after the 1.2s wait, it calls show() on the destroyed activity's supportFragmentManager (DetailScreen.kt:64), which throws 'FragmentManager has been destroyed'.
+Fix approach: Remove GlobalScope and the captured FragmentActivity from DealLoader. Load the product in a lifecycle-bound scope (LaunchedEffect or a ViewModel's viewModelScope) so it is cancelled on rotation. Hold the deal message in state that survives configuration change (rememberSaveable or a ViewModel field) and render it with a Compose AlertDialog, which removes the DialogFragment/FragmentManager dependency. Stop casting LocalContext to FragmentActivity.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:58 - DealLoader.load launches on GlobalScope.launch(Dispatchers.Main), so the coroutine is not tied to any lifecycle or composition; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:57 - load takes the FragmentActivity and captures it in the long-running coroutine; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:64 - show(activity.supportFragmentManager) runs after the await, on the activity captured before rotation; the crash frame is here; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:72 - LocalContext cast to FragmentActivity, the same stale activity reference; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:74-75 - LaunchedEffect(productId) relaunches DealLoader.load on each new composition, which is why the rotated activity starts a second load; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:62 - the route is kept in rememberSaveable, so the Detail screen is rebuilt after rotation while the old load is still pending; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:79 - DetailScreen is rendered for Route.Detail after recreation, with no cancellation of the previous load
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+## Regression test
+Add an instrumented test class DetailScreenRotationTest in src/androidTest. It opens the detail route for a product with a deal, recreates the activity (rotation) while the load is still in flight, and then asserts that no IllegalStateException is thrown, that detail_name is displayed, and that the deal popup appears exactly once. Before the fix it fails with 'FragmentManager has been destroyed'; after the fix it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
