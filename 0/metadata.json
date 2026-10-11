@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4NQDN304C21PE820D2N8BHW",
+  "session_id": "84a6b2fd-0bd7-4372-bb94-cb1bf2aa1d15",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T14:56:10.514683Z",
+  "branch": "droid-monkey/cmp-v3-compile-tool",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "app/src/androidTest/java/com/shubhasai/monkeymart/CouponScannerPermissionTest.kt",
+    "app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "95da933a7aa7",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 55262,
+    "cache_read_tokens": 267684,
+    "output_tokens": 8689,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 742,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".droid-monkey/.gitignore": 3,
+        ".droid-monkey/ANALYSIS.md": 69,
+        ".droid-monkey/analysis-run.json": 37,
+        ".droid-monkey/flows.json": 220,
+        ".droid-monkey/profile.json": 134,
+        ".droid-monkey/screen-map.json": 275,
+        "monkey.yaml": 4
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 802,
+      "agent_lines_removed": 20
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `permission_revoke` (permission_revoke): Grant a permission through the app, revoke it the way Settings does, come back and use the feature again.
+Steps: [{"tap": "scan_coupon"}, {"accept_permission": true}, {"settle": 3}, {"fault": "revoke_permission", "permission": "android.permission.CAMERA"}, {"restart_to_screen": true}, {"tap": "scan_coupon"}, {"settle": 4.0}]
+Result: crashed: java.lang.SecurityException: validateClientPermissionsLocked:1848: Caller "com.shubhasai.monkeymart" (PID 16510, UID 10240) cannot open camera "1" without camera permission
+Crash: java.lang.SecurityException @ com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt.ScanCouponButton$lambda$9$lambda$8$lambda$7(CouponScanner.kt:77)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: CouponScanner remembers camera access in a SharedPreferences boolean that is set once after a grant (CouponScanner.kt:37, written in ScanCouponButton at :66) and never cleared. The Scan button gates on that flag alone (CouponScanner.kt:76-77), so after Settings revokes CAMERA the app still believes it has access and calls CameraManager.openCamera directly (CouponScanner.kt:44), which throws SecurityException. The fault invalidates the cached grant, but the app never rechecks the real permission state.
+Fix approach: Drop the persisted flag and make the gate ask the system: use ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PERMISSION_GRANTED in hasCameraAccess. If it is not granted, launch the RequestPermission contract instead of opening the camera. Also wrap openCamera in try/catch for SecurityException and surface a status message as a last-resort guard against races with revocation.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:33-34 - hasCameraAccess returns a SharedPreferences boolean, not the live permission state; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:36-38 - rememberCameraGranted persists camera_granted=true and nothing ever clears it; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:66 - the permission callback writes the flag after a successful grant; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:76-77 - the button opens the camera when the stale flag is true, with no permission check; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:44 - cameras.openCamera throws SecurityException once CAMERA is revoked; the crash frame matches this line; app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt:79 - the request-permission path exists but is unreachable after revocation because of the stale flag; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:74 - the checkout screen renders ScanCouponButton(), so the crash happens on the checkout_form screen
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt
+
+## Regression test
+Instrumented test in src/androidTest, class CouponScannerPermissionTest: grant CAMERA, open checkout_form, revoke CAMERA with `pm revoke` or UiAutomation, then tap the scan_coupon tag. Assert no SecurityException is thrown and that the request-permission path runs (the status text is 'Camera permission is needed to scan coupons' or the system permission dialog appears). This fails before the fix because the stale flag calls open() directly, and passes after because hasCameraAccess checks the live permission.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+replay survived but com.shubhasai.monkeymart.CouponScannerPermissionTest failed:
+com.shubhasai.monkeymart.CouponScannerPermissionTest > scanAfterCameraRevokedDoesNotCrashAndDoesNotTrustStaleGrant[Pixel_10(AVD) - 16] [31mFAILED [0m
+Execute com.shubhasai.monkeymart.CouponScannerPermissionTest.scanAfterCameraRevokedDoesNotCrashAndDoesNotTrustStaleGrant: FAILED
+<failure></failure>
+    </testcase>
+  </testsuite>
+  <system-err>Test run failed to complete. Instrumentation run failed due to Process crashed.
+</system-err>
+</testsuites>
+
+The diagnosis was revised:
+Root cause: The current CouponScanner already checks CAMERA live (CouponScanner.kt:32-33), so the stale SharedPreferences flag from the first diagnosis is gone. The remaining defect is that the camera call is a synchronous, unguarded side effect in a click handler. The SecurityException catch wraps only `openCamera` (CouponScanner.kt:39-55), not `getSystemService` and `cameraIdList` (CouponScanner.kt:37-38), so a revoke-then-tap race still throws out of the click. The failure path then has no recovery: the catch only writes a status string and never re-requests CAMERA (CouponScanner.kt:53-54), while the composable only requests the permission when the pre-check says it is missing (CouponScanner.kt:74-78). The replayed crash at CouponScanner.kt:44 came from the pre-fix build, so this fix has not yet been exercised on the current code.
+Fix approach: Make the scan action one permission-aware operation. Put getSystemService, cameraIdList and openCamera inside one try that catches SecurityException and CameraAccessException. On SecurityException, route to the RequestPermission launcher and set a status instead of showing a stale 'ready' state. Keep the live checkSelfPermission pre-check, and do not rely on any cached grant.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/CouponScanner.kt
+
+Rework the fix (and the test if needed) following the same rules, and call the compile tool before you finish.
+Do not commit.
