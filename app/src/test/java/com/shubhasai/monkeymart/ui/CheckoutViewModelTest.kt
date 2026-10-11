@@ -1,5 +1,6 @@
 package com.shubhasai.monkeymart.ui
 
+import androidx.lifecycle.SavedStateHandle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertEquals
@@ -17,7 +18,7 @@ class CheckoutViewModelTest {
         val scope = CoroutineScope(
             Dispatchers.Unconfined + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> uncaught = e },
         )
-        val vm = CheckoutViewModel(scope)
+        val vm = CheckoutViewModel(SavedStateHandle(), scope)
         vm.name = "A"
         vm.email = "a@b.c"
         vm.phone = "123"
