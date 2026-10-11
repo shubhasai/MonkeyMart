@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4NNXJJD4MB2C5WNMD00DR08",
+  "strategy": "manual-commit",
+  "branch": "droid-monkey/cmp-v1-naive",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt",
+    "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt",
+    "app/src/test/java/com/shubhasai/monkeymart/CheckoutViewModelTest.kt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 26726,
+    "cache_read_tokens": 76989,
+    "output_tokens": 2956,
+    "api_call_count": 4
+  }
+}

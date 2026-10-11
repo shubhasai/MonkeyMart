@@ -1,0 +1,31 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `network_loss` (network_loss): Drop the network, then trigger the screen's submit or slow action; the app must not crash or go silent.
+Steps: [{"fill": true}, {"fault": "network_off"}, {"tap": "place_order"}, {"settle": 5.3}]
+Result: crashed: java.io.IOException: Unable to reach orders.monkeymart.example: no network
+Crash: java.io.IOException @ com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel$placeOrder$1.invokeSuspend(CheckoutViewModel.kt:32)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel.placeOrder(CheckoutViewModel.kt:31)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt.CheckoutScreen$lambda$20$lambda$18$lambda$17(CheckoutScreen.kt:77)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt$$ExternalSyntheticLambda9.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: Not diagnosed (naive baseline run).
+Fix approach: 
+Evidence: -
+
+## Files to change
+Not diagnosed: find the root cause and the files to change yourself.
+
+## Regression test
+Add one regression test that fails before the fix and passes after it.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
