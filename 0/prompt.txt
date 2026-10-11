@@ -1,0 +1,27 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: 6 of 6 filled fields changed or emptied
+Fields lost (before -> after): {'field_name': ['Ravi Kumar', ''], 'field_email': ['ravi@example.com', ''], 'field_phone': ['9876543210', ''], 'field_address': ['12 MG Road', ''], 'field_city': ['Bengaluru', ''], 'field_pincode': ['560001', '']}
+
+## Diagnosis
+Root cause: CheckoutViewModel stores all six delivery fields in plain mutableStateOf properties (CheckoutViewModel.kt:14-19), which are only in process memory. The screen reads and writes them directly (CheckoutScreen.kt:67-72), and it creates the ViewModel via the default viewModel() with no saved-state handle (CheckoutScreen.kt:34). When Android kills the background process, the ViewModel is discarded, and on relaunch a new instance starts with every field blank, which is exactly the observed loss. Because the isComplete gate (CheckoutViewModel.kt:26-27) then disables Place order, the user has to retype everything.
+Fix approach: Take a SavedStateHandle in the ViewModel constructor and back each field with it, for example with handle.getStateFlow or a mutableStateOf-backed saved key via a getter/setter that writes to handle["name"]. The default viewModel() factory injects the handle automatically, so CheckoutScreen.kt needs no change. The form then survives process death through the saved-state bundle, and the existing property names keep the screen code unchanged.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:13 - class CheckoutViewModel : ViewModel() takes no SavedStateHandle; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:14-19 - the six delivery fields are plain mutableStateOf("") and are not saved anywhere; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:26-27 - isComplete depends on those in-memory fields, so Place order stays disabled after the fields are lost; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:34 - vm: CheckoutViewModel = viewModel() with no saved-state setup; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:67-72 - the screen reads and writes the form directly through vm.name, vm.email, and so on, so the loss reaches the UI
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+
+## Regression test
+Add a JVM unit test CheckoutViewModelSavedStateTest in src/test. It creates CheckoutViewModel(SavedStateHandle()), sets name='Ravi Kumar', email, phone, address, city and pincode, then copies the handle's saved state (handle.savedStateProvider().saveState()) into a new SavedStateHandle and constructs a second CheckoutViewModel from it. It asserts all six properties equal the originally entered values and isComplete is true. Before the fix this fails: the constructor does not accept a handle, and the restored fields are blank.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
