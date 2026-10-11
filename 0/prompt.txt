@@ -1,0 +1,29 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `permission_revoke` (permission_revoke): Grant a permission through the app, revoke it the way Settings does, come back and use the feature again.
+Steps: [{"tap": "scan_coupon"}, {"accept_permission": true}, {"settle": 3}, {"fault": "revoke_permission", "permission": "android.permission.CAMERA"}, {"restart_to_screen": true}, {"tap": "scan_coupon"}, {"settle": 4.0}]
+Result: crashed: java.lang.SecurityException: validateClientPermissionsLocked:1848: Caller "com.shubhasai.monkeymart" (PID 6283, UID 10234) cannot open camera "1" without camera permission
+Crash: java.lang.SecurityException @ com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScanner.open(CouponScanner.kt:44)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt.ScanCouponButton$lambda$9$lambda$8$lambda$7(CouponScanner.kt:77)
+  at com.shubhasai.monkeymart.ui.CouponScannerKt$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: Not diagnosed (naive baseline run).
+Fix approach: 
+Evidence: -
+
+## Files to change
+Not diagnosed: find the root cause and the files to change yourself.
+
+## Regression test
+Add one regression test that fails before the fix and passes after it.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
