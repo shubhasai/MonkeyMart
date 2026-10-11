@@ -1,0 +1,33 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `network_loss` (network_loss): Drop the network, then trigger the screen's submit or slow action; the app must not crash or go silent.
+Steps: [{"fill": true}, {"fault": "network_off"}, {"tap": "place_order"}, {"settle": 5.3}]
+Result: crashed: java.io.IOException: Unable to reach orders.monkeymart.example: no network
+Crash: java.io.IOException @ com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.data.OrderRepository.submit(OrderRepository.kt:27)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel$placeOrder$1.invokeSuspend(CheckoutViewModel.kt:32)
+  at com.shubhasai.monkeymart.ui.CheckoutViewModel.placeOrder(CheckoutViewModel.kt:31)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt.CheckoutScreen$lambda$20$lambda$18$lambda$17(CheckoutScreen.kt:77)
+  at com.shubhasai.monkeymart.ui.CheckoutScreenKt$$ExternalSyntheticLambda9.invoke(D8$$SyntheticClass:0)
+
+## Diagnosis
+Root cause: OrderRepository.submit throws IOException when there is no network (OrderRepository.kt:27). CheckoutViewModel.placeOrder launches that call in viewModelScope with no try/catch (CheckoutViewModel.kt:31-34), so the exception escapes the coroutine and crashes the app. Even if it were caught, `placing = true` is only reset on the success path (line 33), so the spinner would stay on forever. The design flaw is that the ViewModel treats a recoverable network failure as an unrecoverable exception and has no error state for the UI to show.
+Fix approach: In placeOrder, wrap the submit call in try/catch(IOException) inside the coroutine. On failure, reset `placing` to false and set an observable `error` state (for example 'No network, try again'). Show that error in CheckoutScreen and keep the form contents so the user can retry the button. To make this testable, put OrderRepository behind a small interface (or pass a suspend lambda) so the ViewModel can be tested with a fake that throws.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:27 - submit() throws IOException when isOnline() is false, which is the crash site; app/src/main/java/com/shubhasai/monkeymart/data/OrderRepository.kt:32-35 - isOnline() reads the active network capability, so offline always returns false; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:30 - placing is set to true before the launch; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:31-34 - viewModelScope.launch calls orders.submit with no try/catch, so the IOException is uncaught; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt:33 - placing=false runs only after a successful submit, so a failure would leave the spinner stuck; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:77 - the Place order onClick calls vm.placeOrder, which is the entry point in the crash stack; app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt:78-81 - the button is disabled while placing and shows a spinner, and no error is rendered anywhere
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt
+- app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt
+
+## Regression test
+Add a JVM unit test in src/test, CheckoutViewModelTest, that gives the ViewModel a fake order source whose submit throws java.io.IOException, fills all fields, and calls placeOrder. It asserts that the coroutine does not throw, that `placing` returns to false, that `orderId` stays null, and that `error` is non-null. Before the fix the test fails because the exception propagates out of viewModelScope and `placing` stays true. After the fix it passes.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.

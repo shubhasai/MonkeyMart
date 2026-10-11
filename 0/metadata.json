@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4NR7N65EDGMKSJK49QR5QHH",
+  "session_id": "e6ae6d7b-7b3b-4c91-91ab-0da9b6a6bf01",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T15:10:22.524148Z",
+  "branch": "droid-monkey/cmp-v4-test-plan",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutScreen.kt",
+    "app/src/main/java/com/shubhasai/monkeymart/ui/CheckoutViewModel.kt",
+    "app/src/test/java/com/shubhasai/monkeymart/ui/CheckoutViewModelTest.kt"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-5-5",
+  "turn_id": "d65ba3837cdc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 10,
+    "cache_creation_tokens": 28200,
+    "cache_read_tokens": 50502,
+    "output_tokens": 4241,
+    "api_call_count": 3
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 742,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".droid-monkey/.gitignore": 3,
+        ".droid-monkey/ANALYSIS.md": 69,
+        ".droid-monkey/analysis-run.json": 37,
+        ".droid-monkey/flows.json": 220,
+        ".droid-monkey/profile.json": 134,
+        ".droid-monkey/screen-map.json": 275,
+        "monkey.yaml": 4
+      }
+    }
+  ]
+}
