@@ -9,16 +9,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.shubhasai.monkeymart.data.OrderRepository
 import com.shubhasai.monkeymart.data.ProductRepository
 import com.shubhasai.monkeymart.data.priceLabel
 
@@ -29,6 +34,17 @@ fun CheckoutScreen(
     vm: CheckoutViewModel = viewModel(),
 ) {
     val product = ProductRepository.cached(productId)
+    val context = LocalContext.current
+    val orders = remember { OrderRepository(context) }
+
+    val placedId = vm.orderId
+    if (placedId != null) {
+        Column(modifier.fillMaxSize().padding(24.dp).testTag("order_confirmed"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Order placed 🎉", style = MaterialTheme.typography.headlineSmall)
+            Text("Order $placedId is on its way to ${vm.city}.", modifier = Modifier.testTag("order_id"))
+        }
+        return
+    }
 
     Column(
         modifier = modifier
@@ -54,6 +70,14 @@ fun CheckoutScreen(
         CheckoutField("Address", vm.address, { vm.address = it }, "field_address")
         CheckoutField("City", vm.city, { vm.city = it }, "field_city")
         CheckoutField("Pincode", vm.pincode, { vm.pincode = it }, "field_pincode", KeyboardType.Number)
+
+        Button(
+            onClick = { vm.placeOrder(orders, productId) },
+            enabled = vm.isComplete && !vm.placing,
+            modifier = Modifier.fillMaxWidth().testTag("place_order"),
+        ) {
+            if (vm.placing) CircularProgressIndicator(Modifier.testTag("placing_order")) else Text("Place order")
+        }
     }
 }
 

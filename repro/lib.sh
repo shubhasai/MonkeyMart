@@ -127,3 +127,6 @@ kill_in_background() {
   done
   echo "!! process still alive after am kill" >&2; return 1
 }
+
+network_off() { adb shell svc wifi disable; adb shell svc data disable; sleep 2; }
+network_on()  { adb shell svc wifi enable;  adb shell svc data enable; }
