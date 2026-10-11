@@ -71,6 +71,8 @@ fun CheckoutScreen(
         CheckoutField("City", vm.city, { vm.city = it }, "field_city")
         CheckoutField("Pincode", vm.pincode, { vm.pincode = it }, "field_pincode", KeyboardType.Number)
 
+        ScanCouponButton()
+
         Button(
             onClick = { vm.placeOrder(orders, productId) },
             enabled = vm.isComplete && !vm.placing,
