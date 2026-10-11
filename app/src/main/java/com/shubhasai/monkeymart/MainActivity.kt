@@ -1,7 +1,6 @@
 package com.shubhasai.monkeymart
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,10 +19,12 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.fragment.app.FragmentActivity
+import com.shubhasai.monkeymart.ui.DetailScreen
 import com.shubhasai.monkeymart.ui.ShopScreen
 import com.shubhasai.monkeymart.ui.theme.MonkeyMartTheme
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -38,13 +39,16 @@ class MainActivity : ComponentActivity() {
 /** Screens are addressed by a small route string so the back stack survives recreation. */
 sealed interface Route {
     data object Shop : Route
+    data class Detail(val productId: Int) : Route
 }
 
 private fun Route.encode(): String = when (this) {
     Route.Shop -> "shop"
+    is Route.Detail -> "detail:$productId"
 }
 
 private fun decodeRoute(raw: String): Route = when {
+    raw.startsWith("detail:") -> Route.Detail(raw.removePrefix("detail:").toInt())
     else -> Route.Shop
 }
 
@@ -65,7 +69,8 @@ fun MonkeyMartApp() {
     ) { padding ->
         val content = Modifier.padding(padding)
         when (route) {
-            Route.Shop -> ShopScreen(onProductClick = { }, modifier = content)
+            Route.Shop -> ShopScreen(onProductClick = { go(Route.Detail(it)) }, modifier = content)
+            is Route.Detail -> DetailScreen(route.productId, onBuyNow = { }, modifier = content)
         }
     }
 }

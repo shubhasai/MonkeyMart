@@ -34,7 +34,7 @@ object ProductRepository {
 
     /** Product detail, including today's deal, from a slow endpoint. */
     suspend fun byId(id: Int): Product {
-        delay(3_000)
+        delay(5_000)
         return products.first { it.id == id }
     }
 
