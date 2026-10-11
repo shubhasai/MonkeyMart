@@ -1,0 +1,27 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `rotation` (rotation): Rotate the device while work started by a tap is still running, or on a filled form.
+Steps: [{"fill": true}, {"tap": "product_1"}, {"wait": 1.2}, {"fault": "rotate"}, {"settle": 8.0}]
+Result: crashed: java.lang.IllegalStateException: FragmentManager has been destroyed
+Crash: java.lang.IllegalStateException @ com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+  at com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:64)
+
+## Diagnosis
+Root cause: DetailScreen.kt:72-75 captures the current Activity from LocalContext and passes it into DealLoader.load, which launches on GlobalScope (DetailScreen.kt:57-58). The coroutine outlives the composition and the Activity. On rotation MainActivity is destroyed and recreated (MainActivity.kt:33-34), but the old coroutine still resumes after ProductRepository.byId (DetailScreen.kt:59) and calls show() on the dead activity's supportFragmentManager (DetailScreen.kt:62-64). That FragmentManager is already destroyed, so it throws IllegalStateException. The design mistake is an unscoped coroutine that holds a UI-owned, recreatable object.
+Fix approach: Remove GlobalScope and the Activity parameter from DealLoader. Load the product and deal inside the composable's LaunchedEffect(productId), which is cancelled on rotation, or in a ViewModel using viewModelScope with the productId kept in SavedStateHandle. Show the deal as Compose state (for example an AlertDialog driven by a dealMessage state variable) instead of a DialogFragment that needs the activity's FragmentManager. Then nothing touches a destroyed FragmentManager.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:57-58 - DealLoader.load launches on GlobalScope(Dispatchers.Main), which is not tied to any lifecycle; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:59-60 - suspend repository call, then onLoaded runs after the load completes, even if the activity has been destroyed; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:62-64 - DealDialogFragment.show(activity.supportFragmentManager) on the captured activity's FragmentManager, which throws once that activity is destroyed (the crash site); app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:72 - LocalContext cast to FragmentActivity captures the activity instance that rotation destroys; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:74-75 - LaunchedEffect calls DealLoader.load with that captured activity, so the scoped effect still hands an unscoped coroutine an old activity; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:33-34 - setContent recreates the whole UI tree on rotation, so the activity captured by the old coroutine is destroyed
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+## Regression test
+Add an instrumented test class DetailRotationTest in src/androidTest. Launch MainActivity with ActivityScenario, click the row tagged product_1 (a product with a deal), call scenario.recreate() immediately while the load is still running, then idle. Assert that the app has not crashed, that detail_name is displayed, and that the deal text is shown. This fails before the fix with the same IllegalStateException and passes after it.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- When done, reply with one short paragraph: what you changed and the test class name.
