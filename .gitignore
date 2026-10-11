@@ -17,7 +17,3 @@ local.properties
 # secrets / tooling
 .env
 .env.*
-monkey-report/*/raw/
-
-# droid-monkey run output (curated reports are committed separately)
-monkey-report/

@@ -1,6 +1,0 @@
-# droid-monkey config for MonkeyMart. Only what droid-monkey can't discover by itself.
-# Screens, forms and attack scenarios are found by `droid-monkey explore`.
-package: com.shubhasai.monkeymart
-module: app
-variant: debug
-avd: Pixel_10
