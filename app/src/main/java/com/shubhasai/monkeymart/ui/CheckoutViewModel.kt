@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.shubhasai.monkeymart.data.OrderRepository
 import com.shubhasai.monkeymart.data.OrderRequest
 import kotlinx.coroutines.launch
+import java.io.IOException
 
 /** Holds the checkout form while the user fills it in. */
 class CheckoutViewModel : ViewModel() {
@@ -26,10 +27,23 @@ class CheckoutViewModel : ViewModel() {
     val isComplete: Boolean
         get() = listOf(name, email, phone, address, city, pincode).all { it.isNotBlank() }
 
+    var error by mutableStateOf<String?>(null)
+        private set
+
     fun placeOrder(orders: OrderRepository, productId: Int) {
-        placing = true
         viewModelScope.launch {
-            orderId = orders.submit(OrderRequest(productId, name, email, phone, address, city, pincode))
+            submit { orders.submit(OrderRequest(productId, name, email, phone, address, city, pincode)) }
+        }
+    }
+
+    internal suspend fun submit(place: suspend () -> String) {
+        placing = true
+        error = null
+        try {
+            orderId = place()
+        } catch (e: IOException) {
+            error = "Couldn't place your order. Check your connection and try again."
+        } finally {
             placing = false
         }
     }
