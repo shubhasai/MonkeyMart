@@ -1,0 +1,29 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `low_memory_on_detailscreen` (low_memory): Recreate the screen several times, then squeeze memory like a low-RAM phone and come back; destroyed screens must be freed and nothing may crash.
+Steps: [{"fault": "recreate_activity", "times": 3}, {"fault": "trim_memory", "level": "RUNNING_CRITICAL"}, {"fault": "trim_memory", "level": "COMPLETE"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: crashed: java.lang.IllegalStateException: FragmentManager has been destroyed
+Crash: java.lang.IllegalStateException @ com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:68)
+  at com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:68)
+
+## Diagnosis
+Root cause: DetailScreen.kt:79 calls DealLoader.load(activity, ...) from a LaunchedEffect, but DealLoader.load (DetailScreen.kt:62) launches on GlobalScope with Dispatchers.Main. The coroutine outlives the composition and holds the Activity. ProductRepository.byId has a 5 s delay (ProductRepository.kt:52), so after recreate_activity x3 and the trim, the coroutine resumes on a destroyed Activity. It then calls activity.supportFragmentManager.show(...) (DetailScreen.kt:68) on a destroyed FragmentManager, which throws. A second defect keeps the screens alive: MainActivity.kt:32 passes every Activity to ScreenTracker.onScreenCreated, which appends it to a strong-reference list (ScreenTracker.kt:9,13) that is never cleared. That is why a destroyed Activity survives forced GC (activities: 1), and it pins each old Activity's views and fragment manager, which is what the crash then touches.
+Fix approach: Run the deal lookup in a scope that is cancelled with the composition (rememberCoroutineScope or LaunchedEffect calling a suspend function) instead of GlobalScope, so a recreated Activity cancels the pending load. Pass the result back to the composable and only show the DealDialogFragment from a live, resumed host, for example by checking lifecycle state before calling show or using lifecycle-aware collection. In ScreenTracker, keep only a count or a WeakReference to the Activity, not a strong list of Activities.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:62 - GlobalScope.launch(Dispatchers.Main) runs the deal load outside any lifecycle or composition scope; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:68 - activity.supportFragmentManager.show(...) runs after the coroutine resumes, and crashes with 'FragmentManager has been destroyed' (the reported crash site); app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:76-79 - the FragmentActivity from LocalContext is captured and passed into the global coroutine by LaunchedEffect; app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt:52 - byId delays 5000 ms, so the load is still pending when recreate and trim happen; app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt:9,13 - sessionScreens is a strong MutableList<Activity> that retains every Activity; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:32 - each Activity is registered in ScreenTracker.onScreenCreated(this), which is where the retention starts; memory after forced GC: activities 1 - a destroyed Activity is still alive after GC, consistent with the strong list in ScreenTracker
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+- app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt
+
+## Regression test
+Add a JVM test, DealLoaderTest in src/test, that injects the product loader and the deal-popup callback as parameters and a TestScope. The test starts load(scope, loader = { delay(5_000); product }, showDeal = { shown++ }), then cancels the scope (simulating the Activity being destroyed) before advancing time, and asserts showDeal is never invoked and the scope has no active job left. Before the fix this fails because GlobalScope keeps running and calls show. A second test, ScreenTrackerTest, asserts that after onScreenCreated(activity) and the activity is garbage collected, the tracker holds no strong reference to it. Before the fix the strong list keeps it alive.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
