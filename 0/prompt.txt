@@ -1,0 +1,57 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `low_memory` (low_memory): Recreate the screen several times, then squeeze memory like a low-RAM phone and come back; destroyed screens must be freed and nothing may crash.
+Steps: [{"fault": "recreate_activity", "times": 3}, {"fault": "trim_memory", "level": "RUNNING_CRITICAL"}, {"fault": "trim_memory", "level": "COMPLETE"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: leaked: 6 destroyed Activity instance(s) still alive after a forced GC (1 -> 7): something keeps a reference to an old Activity
+
+## Diagnosis
+Root cause: MainActivity.onCreate adds `this` to the process-wide `LeakyRegistry.screens` list (MainActivity.kt:31), and nothing ever removes it. The list is a static object (MainActivity.kt:86), so each Activity instance is pinned for the life of the process. The three `recreate_activity` steps each created a new MainActivity and left the old one in the list. The forced GC therefore could not free them, which is why the count went from 1 to 7 instances, with 6 destroyed Activities still reachable.
+Fix approach: Delete the `LeakyRegistry.screens.add(this)` line and the `LeakyRegistry` object. Activity instances should never be stored in statics. If something outside the Activity needs to reach it, use a lifecycle-scoped owner or a WeakReference that is cleared in onDestroy. Screen state already survives recreation through rememberSaveable and SavedStateHandle, so nothing else needs to hold the Activity.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:31 - onCreate does `LeakyRegistry.screens.add(this)`, adding every Activity instance to a static list; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:86 - `object LeakyRegistry { val screens = mutableListOf<Any>() }` is a process-lifetime holder with no removal path; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:28-38 - MainActivity is recreated on each recreate_activity step, so each onCreate adds another instance that is never removed; Attack verdict: 'leaked: 6 destroyed Activity instance(s) still alive after a forced GC (1 -> 7)', which matches 3 recreations plus relaunch leaving old instances reachable; Checkout files (CheckoutScreen.kt, CheckoutViewModel.kt, CouponScanner.kt, OrderRepository.kt) hold no Activity reference that outlives the screen. OrderRepository keeps only applicationContext (OrderRepository.kt:23), and the ViewModel keeps only SavedStateHandle, so the registry is the cause.
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt
+
+## Regression test
+Add an instrumented test class MainActivityRecreateTest in src/androidTest. It launches MainActivity with ActivityScenario, stores a WeakReference to the activity, calls scenario.recreate() three times, then calls Runtime.getRuntime().gc() and System.runFinalization() and asserts that the WeakReference from the first instance has been cleared. Before the fix the reference stays alive because of LeakyRegistry, so the test fails. After the fix it passes. The test does not revoke permissions or kill the process.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+replay survived but com.shubhasai.monkeymart.MainActivityRecreateTest failed:
+roid.ddmlib.InstallException: 'package install-create -r --bypass-low-target-sdk-block -t --user 0 -S 11656243' returns error 'Unknown failure: Exception occurred while executing 'install-create':
+android.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space
+at android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)
+Caused by: java.io.IOException: Requested internal only, but not enough space
+ErrorName: UNKNOWN
+NameSpace: DdmlibAndroidDeviceController
+ErrorCode: 1
+ErrorType: TEST
+Message: Failed to install split APK(s): [/Users/shubhasai/Documents/neat-hack/MonkeyMart/app/build/outputs/apk/debug/app-debug.apk]
+'package install-create -r --bypass-low-target-sdk-block -t --user 0 -S 11656243' returns error 'Unknown failure: Exception occurred while executing 'install-create':
+android.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space
+at android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)
+Caused by: java.io.IOException: Requested internal only, but not enough space
+com.android.ddmlib.InstallException: 'package install-create -r --bypass-low-target-sdk-block -t --user 0 -S 11656243' returns error 'Unknown failure: Exception occurred while executing 'install-create':
+android.os.ParcelableException: java.io.IOException: Requested internal only, but not enough space
+at android.util.ExceptionUtils.wrap(ExceptionUtils.java:34)
+Caused by: java.io.IOException: Requested internal only, but not enough space
+
+The diagnosis was revised:
+Root cause: DetailScreen.kt:72-75 passes the hosting FragmentActivity into DealLoader.load, which starts `GlobalScope.launch(Dispatchers.Main)` (DetailScreen.kt:57-58). That coroutine is not tied to the composition, so it is never cancelled when the screen leaves or the Activity is destroyed. It awaits ProductRepository.byId, which sleeps 5 s (ProductRepository.kt:36-37), and then uses the captured activity to call supportFragmentManager (DetailScreen.kt:64). Every Detail visit that is destroyed within those 5 s keeps its old Activity reachable, which matches the leaked-Activity verdict. The previous diagnosis was wrong: MainActivity.kt has no LeakyRegistry, and MainActivity.kt:28-38 holds no static reference. The failed run was an install error (`Requested internal only, but not enough space`), not evidence about the code. Confidence is moderate: the retention window is bounded by the 5 s delay, so the leak should clear once the coroutine finishes, and the trace does not show the GC timing relative to that window.
+Fix approach: Remove GlobalScope and the Activity parameter from DealLoader. Run the load in a coroutine owned by the composition (LaunchedEffect(productId), or rememberCoroutineScope) so it is cancelled when DetailScreen leaves composition. Pass the deal to the UI as state and show the DealDialogFragment from a callback in the composable, so no background work holds the Activity.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+Rework the fix (and the test if needed) following the same rules, and call the compile tool before you finish.
+Do not commit.
