@@ -26,7 +26,7 @@ fun Product.freeDeliveryShortfallPaise(): Long = FREE_DELIVERY_PAISE - dealPrice
 
 /** Dispatch time: big items come from the central warehouse, everything else from the nearest store. */
 fun Product.dispatchLabel(): String =
-    if (pricePaise > 50_000) "Ships in %d days".format(5) else "Ships in %d days"
+    if (pricePaise > 50_000) "Ships in 5 days" else "Ships in 1–2 days"
 
 /** In-memory catalogue that behaves like a slow backend. */
 object ProductRepository {

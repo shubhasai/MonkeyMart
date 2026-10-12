@@ -101,7 +101,7 @@ fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = M
         Text(loaded.dispatchLabel(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("dispatch"))
         val shortfall = loaded.freeDeliveryShortfallPaise()
         Text(
-            if (shortfall == 0L) "Free delivery" else "Add ${rupees(shortfall)} more for free delivery",
+            if (shortfall <= 0L) "Free delivery" else "Add ${rupees(shortfall)} more for free delivery",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.testTag("free_delivery"),
         )
