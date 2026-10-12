@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.fragment.app.FragmentActivity
+import com.shubhasai.monkeymart.analytics.ScreenTracker
 import com.shubhasai.monkeymart.ui.CheckoutScreen
 import com.shubhasai.monkeymart.ui.DetailScreen
 import com.shubhasai.monkeymart.ui.ShopScreen
@@ -28,6 +29,7 @@ import com.shubhasai.monkeymart.ui.theme.MonkeyMartTheme
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ScreenTracker.onScreenCreated(this)
         enableEdgeToEdge()
         setContent {
             MonkeyMartTheme {
