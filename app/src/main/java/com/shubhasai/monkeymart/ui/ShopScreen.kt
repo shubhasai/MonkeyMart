@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubhasai.monkeymart.data.Product
@@ -82,6 +84,7 @@ fun ShopScreen(onProductClick: (Int) -> Unit, modifier: Modifier = Modifier) {
 
 @Composable
 private fun ProductCard(product: Product, onClick: () -> Unit) {
+    var wished by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -97,6 +100,13 @@ private fun ProductCard(product: Product, onClick: () -> Unit) {
                 Text(product.description, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
             Text(product.priceLabel(), style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier.size(24.dp).clickable { wished = !wished }.testTag("wish_${product.id}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(if (wished) "♥" else "♡", fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics { })
+            }
         }
     }
 }
