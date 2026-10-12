@@ -20,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,9 +34,13 @@ import com.shubhasai.monkeymart.data.dispatchLabel
 import com.shubhasai.monkeymart.data.freeDeliveryShortfallPaise
 import com.shubhasai.monkeymart.data.priceLabel
 import com.shubhasai.monkeymart.data.rupees
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Today's deal for a product, shown as a popup. */
@@ -55,31 +58,61 @@ class DealDialogFragment : DialogFragment() {
     }
 }
 
-/** Loads a product's detail and announces today's deal in a popup. */
-@OptIn(DelicateCoroutinesApi::class)
-object DealLoader {
-    fun load(activity: FragmentActivity, productId: Int, onLoaded: (Product) -> Unit) {
-        GlobalScope.launch(Dispatchers.Main) {
-            val product = ProductRepository.byId(productId)
-            onLoaded(product)
-            if (product.dealPercent > 0) {
-                DealDialogFragment
-                    .newInstance("${product.dealPercent}% off ${product.name}, today only.")
-                    .show(activity.supportFragmentManager, "deal")
+/** Loads a product's detail in [viewModelScope]; the loaded id is saved so a restored screen shows content at once. */
+class DetailViewModel(private val handle: SavedStateHandle) : ViewModel() {
+    var product by mutableStateOf<Product?>(null)
+        private set
+    var pendingDeal by mutableStateOf<String?>(null)
+        private set
+
+    private var loading: Job? = null
+
+    fun load(productId: Int) {
+        if (product?.id == productId || loading?.isActive == true) return
+        if (handle.get<Int>(LOADED_KEY) == productId) {
+            product = ProductRepository.cached(productId)
+            if (product != null) return
+        }
+        loading = viewModelScope.launch {
+            val loaded = ProductRepository.byId(productId)
+            product = loaded
+            handle[LOADED_KEY] = productId
+            if (loaded.dealPercent > 0 && handle.get<Int>(DEAL_SHOWN_KEY) != productId) {
+                pendingDeal = "${loaded.dealPercent}% off ${loaded.name}, today only."
             }
         }
+    }
+
+    fun dealShown() {
+        product?.let { handle[DEAL_SHOWN_KEY] = it.id }
+        pendingDeal = null
+    }
+
+    private companion object {
+        const val LOADED_KEY = "loadedProductId"
+        const val DEAL_SHOWN_KEY = "dealShownProductId"
     }
 }
 
 @Composable
 fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = Modifier) {
     val activity = LocalContext.current as FragmentActivity
-    var product by remember { mutableStateOf<Product?>(null) }
-    LaunchedEffect(productId) {
-        DealLoader.load(activity, productId) { product = it }
+    val vm: DetailViewModel = viewModel(key = "detail-$productId")
+    LaunchedEffect(productId) { vm.load(productId) }
+
+    val deal = vm.pendingDeal
+    LaunchedEffect(deal) {
+        if (deal == null) return@LaunchedEffect
+        activity.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val fm = activity.supportFragmentManager
+            if (!fm.isStateSaved) {
+                DealDialogFragment.newInstance(deal).show(fm, "deal")
+                vm.dealShown()
+            }
+        }
     }
 
-    val loaded = product
+    val loaded = vm.product
     if (loaded == null) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(Modifier.testTag("detail_loading"))
