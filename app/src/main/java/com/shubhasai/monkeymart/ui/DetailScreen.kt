@@ -74,7 +74,7 @@ object DealLoader {
 @Composable
 fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = Modifier) {
     val activity = LocalContext.current as FragmentActivity
-    var product by remember { mutableStateOf<Product?>(null) }
+    var product by remember(productId) { mutableStateOf(ProductRepository.cached(productId)) }
     LaunchedEffect(productId) {
         DealLoader.load(activity, productId) { product = it }
     }
