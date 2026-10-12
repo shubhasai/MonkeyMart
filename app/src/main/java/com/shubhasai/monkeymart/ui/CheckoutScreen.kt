@@ -25,7 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.shubhasai.monkeymart.data.OrderRepository
 import com.shubhasai.monkeymart.data.ProductRepository
+import com.shubhasai.monkeymart.data.dealPricePaise
 import com.shubhasai.monkeymart.data.priceLabel
+import com.shubhasai.monkeymart.data.rupees
 
 @Composable
 fun CheckoutScreen(
@@ -58,7 +60,8 @@ fun CheckoutScreen(
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("${product.emoji} ${product.name}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                    Text(product.priceLabel(), style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("checkout_total"))
+                    val totalPaise = product.dealPricePaise() * (100 - product.dealPercent) / 100 // today's deal
+                    Text("Total ${rupees(totalPaise)}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.testTag("checkout_total"))
                 }
             }
         }

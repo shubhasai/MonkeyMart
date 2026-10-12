@@ -30,7 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shubhasai.monkeymart.data.Product
 import com.shubhasai.monkeymart.data.ProductRepository
+import com.shubhasai.monkeymart.data.dealPricePaise
 import com.shubhasai.monkeymart.data.priceLabel
+import com.shubhasai.monkeymart.data.rupees
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -90,7 +92,10 @@ fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = M
     ) {
         Text(loaded.emoji, fontSize = 96.sp)
         Text(loaded.name, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.testTag("detail_name"))
-        Text(loaded.priceLabel(), style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("detail_price"))
+        Text(rupees(loaded.dealPricePaise()), style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("detail_price"))
+        if (loaded.dealPercent > 0) {
+            Text("${loaded.dealPercent}% off today, was ${loaded.priceLabel()}", style = MaterialTheme.typography.bodySmall)
+        }
         Text(loaded.description, style = MaterialTheme.typography.bodyMedium)
         Button(
             onClick = { onBuyNow(loaded.id) },

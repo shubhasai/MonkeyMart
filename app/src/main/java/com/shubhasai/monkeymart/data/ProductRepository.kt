@@ -13,6 +13,11 @@ data class Product(
 
 fun Product.priceLabel(): String = "₹%,d".format(pricePaise / 100)
 
+/** Price after today's deal. */
+fun Product.dealPricePaise(): Long = pricePaise * (100 - dealPercent) / 100
+
+fun rupees(paise: Long): String = "₹%,d".format(paise / 100)
+
 /** In-memory catalogue that behaves like a slow backend. */
 object ProductRepository {
 
