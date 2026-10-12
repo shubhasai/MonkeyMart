@@ -18,6 +18,10 @@ fun Product.dealPricePaise(): Long = pricePaise * (100 - dealPercent) / 100
 
 fun rupees(paise: Long): String = "₹%,d".format(paise / 100)
 
+/** Dispatch time: big items come from the central warehouse, everything else from the nearest store. */
+fun Product.dispatchLabel(): String =
+    if (pricePaise > 50_000) "Ships in %d days".format(5) else "Ships in %d days"
+
 /** In-memory catalogue that behaves like a slow backend. */
 object ProductRepository {
 
