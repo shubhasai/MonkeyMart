@@ -1,0 +1,18 @@
+{
+  "tool_use_id": "toolu_014VrejWtwzhtmRUbDrWFu55",
+  "agent_id": "a99c0e8a13de565b4",
+  "subagent_type": "Explore",
+  "task_description": "Find DealLoader usages",
+  "files": [
+    "app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt"
+  ],
+  "token_usage": {
+    "input_tokens": 23,
+    "cache_creation_tokens": 12662,
+    "cache_read_tokens": 15925,
+    "output_tokens": 835,
+    "api_call_count": 4
+  },
+  "started_at": "2026-10-12T18:07:00.421376+05:30",
+  "completed_at": "2026-10-12T18:07:00.421677+05:30"
+}

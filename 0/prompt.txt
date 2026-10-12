@@ -1,0 +1,40 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `process_death_on_detailscreen` (process_death): Fill the screen's form, let Android kill the app in the background, then come back to it.
+Steps: [{"fill": true}, {"fault": "kill_in_background"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: lost_state: the app came back on a different screen than the user left
+
+## Diagnosis
+Root cause: Navigation state lives in a single rememberSaveable String at MainActivity.kt:64, and the Detail screen's product data is held only in plain remember with a GlobalScope load (DetailScreen.kt:77-80). The saveable route should survive process death, so the code I read does not clearly explain the Shop landing, and I could not confirm the mechanism from source alone. What is certain is that the DetailScreen has no form inputs (DetailScreen.kt:90-113), so the 'fill' step left no state to lose, and that the product is re-fetched after restore through a 5-second delay (ProductRepository.kt:51-52) that the DetailScreen shows only as a spinner. Confidence is low; the next step is to check the saved-state bundle or the restored route directly.
+Fix approach: Move the route into a ViewModel whose state is held in SavedStateHandle (or keep it in rememberSaveable with an explicit Saver), so the back stack is restored deterministically. Tie the product load to the ViewModel scope instead of GlobalScope in DealLoader, so a restored Detail screen reloads its data without depending on the composition or the activity instance.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:64 - route held in rememberSaveable String, which should survive process death; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:49-59 - route encode/decode is private and not exercised by any test; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:77-80 - product stored in plain remember and loaded via DealLoader with GlobalScope, not tied to a lifecycle-aware scope; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:90-113 - DetailScreen has no input fields, so the 'fill' step had no form state to preserve; app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt:51-52 - byId delays 5 seconds, so the restored Detail screen shows a spinner for that long; app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt:9 - static session list holds Activity references; it is cleared by process death and does not drive navigation
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt
+
+## Regression test
+Add a JVM test class NavigationStateTest in src/test that constructs the navigation ViewModel with a SavedStateHandle holding 'detail:3', then asserts the route is Route.Detail(3) and that go(Route.Shop) followed by a new ViewModel built from the same saved handle returns Route.Detail(3) only if the Shop navigation was saved. This test does not fail on the current code, because the current route codec in MainActivity.kt:49-59 is private and has no ViewModel to test, so it can only be written after the extraction. Treat it as a planned test, not a confirmed failing one.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+replay still fails: lost_state: the app came back on a different screen than the user left
+
+The diagnosis was revised:
+Root cause: Low confidence. The route itself is restored: go() writes the route into SavedStateHandle (MainActivity.kt:68-70) and the initial value is decoded from it (MainActivity.kt:65), so the earlier 'route is lost' theory is not supported by the code. What the Detail path does after restore is fragile: DetailScreen keeps the product only in plain remember (DetailScreen.kt:77) and reloads it through DealLoader on GlobalScope (DetailScreen.kt:78-80, 62-64). ProductRepository.byId waits 5 seconds (ProductRepository.kt:51-52), so the restored screen is a spinner (DetailScreen.kt:83-87) for about 5 s, then a deal DialogFragment is shown over it (DetailScreen.kt:65-69). Nothing is saved, so a restored Detail is not ready at the moment the verifier looks. I could not find code that changes the screen on relaunch, so this does not clearly explain a Shop landing; treat it as the most likely contributor, not a confirmed cause. ScreenTracker's static Activity list (ScreenTracker.kt:9) does not drive navigation and is not the cause.
+Fix approach: Move the product load out of composition into a ViewModel (for example DetailViewModel) that takes the product id from SavedStateHandle and loads in viewModelScope instead of GlobalScope. Save the loaded product id and state so a restored Detail shows its content immediately, and only show the deal dialog once per load, not on every restore. Keep DealLoader's activity reference out of the coroutine so it cannot outlive the screen.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+Rework the fix (and the test if needed) following the same rules, and call the compile tool before you finish.
+Do not commit.
