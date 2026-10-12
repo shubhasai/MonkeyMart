@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,11 +32,13 @@ import androidx.compose.ui.unit.sp
 import com.shubhasai.monkeymart.data.Product
 import com.shubhasai.monkeymart.data.ProductRepository
 import com.shubhasai.monkeymart.data.priceLabel
+import kotlinx.coroutines.runBlocking
 
 @Composable
 fun ShopScreen(onProductClick: (Int) -> Unit, modifier: Modifier = Modifier) {
     var products by remember { mutableStateOf<List<Product>?>(null) }
     var query by remember { mutableStateOf("") }
+    var bestDealsFirst by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { products = ProductRepository.all() }
 
     val list = products
@@ -54,6 +57,17 @@ fun ShopScreen(onProductClick: (Int) -> Unit, modifier: Modifier = Modifier) {
             label = { Text("Search products") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("shop_search"),
+        )
+        FilterChip(
+            selected = bestDealsFirst,
+            onClick = {
+                // Deals change during the day: reload the catalogue so the order is current.
+                val fresh = runBlocking { ProductRepository.all() }
+                bestDealsFirst = !bestDealsFirst
+                products = if (bestDealsFirst) fresh.sortedByDescending { it.dealPercent } else fresh
+            },
+            label = { Text("Best deals first") },
+            modifier = Modifier.padding(horizontal = 16.dp).testTag("sort_deals"),
         )
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("shop_list"),
