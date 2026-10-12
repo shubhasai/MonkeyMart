@@ -1,30 +1,26 @@
 package com.shubhasai.monkeymart.ui
 
-import android.app.AlertDialog
-import android.app.Dialog
-import android.os.Bundle
-import androidx.core.os.bundleOf
-import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,48 +31,31 @@ import com.shubhasai.monkeymart.data.dispatchLabel
 import com.shubhasai.monkeymart.data.freeDeliveryShortfallPaise
 import com.shubhasai.monkeymart.data.priceLabel
 import com.shubhasai.monkeymart.data.rupees
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 
-/** Today's deal for a product, shown as a popup. */
-class DealDialogFragment : DialogFragment() {
-    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
-        AlertDialog.Builder(requireContext())
-            .setTitle("Deal unlocked")
-            .setMessage(requireArguments().getString(ARG_MESSAGE))
-            .setPositiveButton("Nice", null)
-            .create()
+/** A loaded product and, if it has one, the text of today's deal popup. */
+data class LoadedDeal(val product: Product, val dealMessage: String?)
 
-    companion object {
-        private const val ARG_MESSAGE = "message"
-        fun newInstance(message: String) = DealDialogFragment().apply { arguments = bundleOf(ARG_MESSAGE to message) }
-    }
-}
-
-/** Loads a product's detail and announces today's deal in a popup. */
-@OptIn(DelicateCoroutinesApi::class)
+/** Loads a product's detail and works out today's deal announcement. */
 object DealLoader {
-    fun load(activity: FragmentActivity, productId: Int, onLoaded: (Product) -> Unit) {
-        GlobalScope.launch(Dispatchers.Main) {
-            val product = ProductRepository.byId(productId)
-            onLoaded(product)
-            if (product.dealPercent > 0) {
-                DealDialogFragment
-                    .newInstance("${product.dealPercent}% off ${product.name}, today only.")
-                    .show(activity.supportFragmentManager, "deal")
-            }
-        }
+    suspend fun load(
+        productId: Int,
+        fetch: suspend (Int) -> Product = ProductRepository::byId,
+    ): LoadedDeal {
+        val product = fetch(productId)
+        val message = if (product.dealPercent > 0) "${product.dealPercent}% off ${product.name}, today only." else null
+        return LoadedDeal(product, message)
     }
 }
 
 @Composable
 fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val activity = LocalContext.current as FragmentActivity
     var product by remember { mutableStateOf<Product?>(null) }
+    var dealMessage by remember { mutableStateOf<String?>(null) }
+    var dealDismissed by rememberSaveable(productId) { mutableStateOf(false) }
     LaunchedEffect(productId) {
-        DealLoader.load(activity, productId) { product = it }
+        val result = DealLoader.load(productId)
+        product = result.product
+        dealMessage = result.dealMessage
     }
 
     val loaded = product
@@ -85,6 +64,16 @@ fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = M
             CircularProgressIndicator(Modifier.testTag("detail_loading"))
         }
         return
+    }
+
+    val message = dealMessage
+    if (message != null && !dealDismissed) {
+        AlertDialog(
+            onDismissRequest = { dealDismissed = true },
+            title = { Text("Deal unlocked") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { dealDismissed = true }) { Text("Nice") } },
+        )
     }
 
     Column(
