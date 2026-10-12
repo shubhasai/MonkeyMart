@@ -1,0 +1,43 @@
+droid-monkey attacked this Android app with a real-world fault and it failed. Fix the root cause.
+
+## What happened
+Attack `low_memory_on_detailscreen` (low_memory): Recreate the screen several times, then squeeze memory like a low-RAM phone and come back; destroyed screens must be freed and nothing may crash.
+Steps: [{"fault": "recreate_activity", "times": 3}, {"fault": "trim_memory", "level": "RUNNING_CRITICAL"}, {"fault": "trim_memory", "level": "COMPLETE"}, {"fault": "relaunch"}, {"settle": 6}]
+Result: crashed: java.lang.IllegalStateException: FragmentManager has been destroyed
+Crash: java.lang.IllegalStateException @ com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:68)
+  at com.shubhasai.monkeymart.ui.DealLoader$load$1.invokeSuspend(DetailScreen.kt:68)
+
+## Diagnosis
+Root cause: DealLoader.load (DetailScreen.kt:61-70) launches on GlobalScope, so the coroutine outlives the composition and the Activity. The composable passes the Activity into it (DetailScreen.kt:76, 79). When the Activity is destroyed by recreate and trim-memory, the coroutine resumes after the repository call and calls activity.supportFragmentManager.show(...) on a destroyed FragmentManager, which throws. Separately, ScreenTracker.sessionScreens (ScreenTracker.kt:9,13) is a process-wide list that keeps every Activity ever created, so destroyed screens are never freed. That matches the 'activities: 1' retained after the forced GC, and it is why the destroyed screens stay alive under memory pressure.
+Fix approach: Make the load a suspend function and run it from LaunchedEffect(productId) so it is cancelled when the screen leaves composition. Have it return the product, then show the deal dialog only if the FragmentManager is still usable (or use a state flag that the composable turns into a dialog), and do not capture the Activity in a GlobalScope. In ScreenTracker, drop the list of Activity objects and keep only a counter (or hold WeakReferences), so destroyed screens can be garbage-collected.
+Evidence: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:61-62 - DealLoader.load launches on GlobalScope with Dispatchers.Main, so the work is not tied to any lifecycle; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:68 - show(activity.supportFragmentManager) runs after the awaited repository call; with a destroyed Activity this is the crash site; app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt:76-79 - DetailScreen casts LocalContext to FragmentActivity and passes it into the global launch via LaunchedEffect; app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt:9 - sessionScreens is a static MutableList<Activity>; app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt:13 - every created Activity is appended and never removed, so each destroyed Activity stays reachable; app/src/main/java/com/shubhasai/monkeymart/MainActivity.kt:32 - ScreenTracker.onScreenCreated(this) is called from onCreate, feeding the leak on every recreate; trace: forced GC before the attack reported activities: 1 still alive after destroyed screens, consistent with the static list
+
+## Files to change
+- app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+- app/src/main/java/com/shubhasai/monkeymart/analytics/ScreenTracker.kt
+
+## Regression test
+Add a JVM unit test class ScreenTrackerTest in src/test that calls ScreenTracker.onScreenCreated with a plain tracked object (after the fix the API takes a screen name or Any, not Activity) 3 times and asserts viewsThisSession() == 3, and asserts that the tracker holds no reference to the passed objects (e.g. a WeakReference to a created object is cleared after System.gc() and the object is dropped). Before the fix this fails because the list keeps the object alive. Also add a DealLoaderTest that calls the suspend load with a fake repository and a fake dialog presenter, cancels the scope mid-load, and asserts the dialog presenter is never called.
+
+## Rules
+- Fix the root cause in the files above with the idiomatic Android approach. Keep the change small and focused.
+- Add exactly one regression test file under app/src/test (JVM unit test, preferred) or app/src/androidTest
+  (instrumented), using only test libraries the project already has (see app/build.gradle.kts). It must fail on
+  the old code and pass on the fixed code.
+- Do not change build files or add dependencies. Do not touch unrelated code. Do not commit.
+- Before you finish, call the compile tool on your test ('unit' or 'instrumented') and fix every error it reports.
+- When done, reply with one short paragraph: what you changed and the test class name.
+
+---
+
+Your fix did not pass verification.
+
+FORCED FAILURE (--fail-first-fix, for demonstrating recovery): this verification passed (replay survived and com.shubhasai.monkeymart.ScreenTrackerTest passed), but it is reported as failed so the retry path runs. Treat the fix as rejected by review: re-examine the root cause and make the fix more robust.
+
+The diagnosis was revised:
+Root cause: DetailScreen.kt:72 casts LocalContext to FragmentActivity, and the LaunchedEffect at DetailScreen.kt:74-86 passes that Activity into DealLoader.load. The deal popup is then shown by calling activity.supportFragmentManager.show(...) from inside a coroutine that is suspended for the 5 s repository delay (ProductRepository.kt:52). The coroutine resumes after the Activity may have been recreated or its FragmentManager destroyed. The isDestroyed/isStateSaved check at DetailScreen.kt:81 only narrows the window, because the decision and the show() call are not tied to the Activity's lifecycle. The previous fix kept this same design (Activity captured, FragmentManager used from a coroutine), so it does not address the crash. Its ScreenTracker change also does not touch this path, since the tracker already only counts. The 'activities: 1' retention is not explained by any path I can find in the current code, so it needs a Shark reference chain to confirm.
+Fix approach: Remove the Activity and FragmentManager from the load path. Make DealLoader.load a suspend function that returns the product plus an optional deal message, and call it from LaunchedEffect(productId). Store the message in Compose state and render it with a Compose AlertDialog, so the popup is part of the composition and disappears with it. Delete the DealDialogFragment, the FragmentActivity cast and the isDestroyed guard. Optionally keep the dismissed-deal flag in rememberSaveable so the popup does not reappear on every recreation.
+Files to change: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+Rework the fix (and the test if needed) following the same rules, and call the compile tool before you finish.
+Do not commit.
