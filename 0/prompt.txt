@@ -1,0 +1,13 @@
+Fix this bug in the Android app. droid-monkey found it on a device: a bug in normal use.
+
+A negative amount of money is shown
+What happens: 'Add ₹-5 more for free delivery' (free_delivery)
+On screen: detailscreen
+Evidence: Add ₹-5 more for free delivery
+Steps from a fresh launch that show it: tap product_1 > tap? android:id/button1|text:nice
+
+Rules:
+- Find the root cause in the code and make the smallest correct fix; keep everything else the same.
+- Do not change build files or add dependencies. Do not commit.
+- Call the compile tool ('main') before you finish and fix every error.
+- Reply with one short paragraph: the cause and what you changed.
