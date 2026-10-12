@@ -1,0 +1,14 @@
+Fix this bug in the Android app. droid-monkey found it on a device: a UX audit finding.
+
+Show cached product instantly instead of a 5 s blank spinner
+What happens: Tapping a product card shows only a full-screen CircularProgressIndicator for about 5 s. The product is already in the list the user just tapped, but DetailScreen discards it and waits for ProductRepository.byId, which has a 5 s delay. Suggested: In DetailScreen, initialise `product` from `ProductRepository.cached(productId)` (it already exists at ProductRepository.kt:56) so the name, emoji, price and Buy now render immediately. Keep the byId refresh in the background and only swap in the deal fields when it returns, or show a small inline progress bar for just the deal row. Do not change the repository's delay.
+On screen: detailscreen
+Evidence: shopscreen: the tap on product_1 (Banana Bunch) took 5.2 s to reach the next screen, which breaks flow (limit 1 s); detailscreen: 5.5 s measured wait, 6.1 s with cold start, before Buy now is reachable; shopscreen: the card already shows the emoji, name, description and price, so the user has seen the data the spinner is waiting for
+Steps from a fresh launch that show it: -
+Files involved: app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt, app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt
+
+Rules:
+- Find the root cause in the code and make the smallest correct fix; keep everything else the same.
+- Do not change build files or add dependencies. Do not commit.
+- Call the compile tool ('main') before you finish and fix every error.
+- Reply with one short paragraph: the cause and what you changed.
