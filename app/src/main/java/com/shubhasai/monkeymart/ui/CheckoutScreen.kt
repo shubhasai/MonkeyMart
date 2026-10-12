@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.shubhasai.monkeymart.data.DeliveryEstimator
 import com.shubhasai.monkeymart.data.OrderRepository
 import com.shubhasai.monkeymart.data.ProductRepository
 import com.shubhasai.monkeymart.data.dealPricePaise
@@ -67,6 +68,7 @@ fun CheckoutScreen(
         }
 
         Text("Delivery details", style = MaterialTheme.typography.titleMedium)
+        Text("Arrives in ${DeliveryEstimator.days(vm.pincode)} days", modifier = Modifier.testTag("delivery_estimate"))
         CheckoutField("Full name", vm.name, { vm.name = it }, "field_name")
         CheckoutField("Email", vm.email, { vm.email = it }, "field_email", KeyboardType.Email)
         CheckoutField("Phone", vm.phone, { vm.phone = it }, "field_phone", KeyboardType.Phone)
