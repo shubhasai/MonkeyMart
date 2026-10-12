@@ -32,6 +32,7 @@ import com.shubhasai.monkeymart.data.Product
 import com.shubhasai.monkeymart.data.ProductRepository
 import com.shubhasai.monkeymart.data.dealPricePaise
 import com.shubhasai.monkeymart.data.dispatchLabel
+import com.shubhasai.monkeymart.data.freeDeliveryShortfallPaise
 import com.shubhasai.monkeymart.data.priceLabel
 import com.shubhasai.monkeymart.data.rupees
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -98,6 +99,12 @@ fun DetailScreen(productId: Int, onBuyNow: (Int) -> Unit, modifier: Modifier = M
             Text("${loaded.dealPercent}% off today, was ${loaded.priceLabel()}", style = MaterialTheme.typography.bodySmall)
         }
         Text(loaded.dispatchLabel(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("dispatch"))
+        val shortfall = loaded.freeDeliveryShortfallPaise()
+        Text(
+            if (shortfall == 0L) "Free delivery" else "Add ${rupees(shortfall)} more for free delivery",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.testTag("free_delivery"),
+        )
         Text(loaded.description, style = MaterialTheme.typography.bodyMedium)
         Button(
             onClick = { onBuyNow(loaded.id) },

@@ -18,6 +18,12 @@ fun Product.dealPricePaise(): Long = pricePaise * (100 - dealPercent) / 100
 
 fun rupees(paise: Long): String = "₹%,d".format(paise / 100)
 
+/** Orders above this ship free. */
+const val FREE_DELIVERY_PAISE = 4_900L
+
+/** How much more the customer has to add to the order for free delivery. */
+fun Product.freeDeliveryShortfallPaise(): Long = FREE_DELIVERY_PAISE - dealPricePaise()
+
 /** Dispatch time: big items come from the central warehouse, everything else from the nearest store. */
 fun Product.dispatchLabel(): String =
     if (pricePaise > 50_000) "Ships in %d days".format(5) else "Ships in %d days"
