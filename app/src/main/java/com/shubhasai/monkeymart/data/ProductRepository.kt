@@ -22,7 +22,7 @@ fun rupees(paise: Long): String = "₹%,d".format(paise / 100)
 const val FREE_DELIVERY_PAISE = 4_900L
 
 /** How much more the customer has to add to the order for free delivery. */
-fun Product.freeDeliveryShortfallPaise(): Long = FREE_DELIVERY_PAISE - dealPricePaise()
+fun Product.freeDeliveryShortfallPaise(): Long = (FREE_DELIVERY_PAISE - dealPricePaise()).coerceAtLeast(0L)
 
 /** Dispatch time: big items come from the central warehouse, everything else from the nearest store. */
 fun Product.dispatchLabel(): String =
