@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4QWMV30S2D0CHZJ5288H5EZ",
+  "strategy": "manual-commit",
+  "branch": "droid-monkey/fix-b93c14b363",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt",
+    "app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 26616,
+    "cache_read_tokens": 119443,
+    "output_tokens": 1369,
+    "api_call_count": 6
+  }
+}

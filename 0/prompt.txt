@@ -1,0 +1,14 @@
+Fix this bug in the Android app. droid-monkey found it on a device: a UX audit finding.
+
+Fix '%d days' and negative free-delivery text on detail
+What happens: The detail screen shows the literal text 'Ships in %d days' with no number. It also shows 'Add ₹-5 more for free delivery' for a ₹54 item. The delivery information the user needs before buying is therefore wrong. Suggested: In `Product.dispatchLabel()` (ProductRepository.kt:28-29) the else branch has no argument and the first branch hard-codes 5. Return e.g. 'Ships in 5 days' for pricePaise > 50_000 and 'Ships in 1–2 days' otherwise. In DetailScreen.kt:102-104 treat `shortfall <= 0L` as 'Free delivery', not just `== 0L`. Optionally use a stringResource with a proper plural.
+On screen: detailscreen
+Evidence: detailscreen: line reads 'Ships in %d days' (the dispatch tag); detailscreen: line reads 'Add ₹-5 more for free delivery' while the price is ₹54, which is above the ₹49 threshold; deal_unlocked_dialog: the same 'Ships in %d days' is visible behind the dialog
+Steps from a fresh launch that show it: -
+Files involved: app/src/main/java/com/shubhasai/monkeymart/data/ProductRepository.kt, app/src/main/java/com/shubhasai/monkeymart/ui/DetailScreen.kt
+
+Rules:
+- Find the root cause in the code and make the smallest correct fix; keep everything else the same.
+- Do not change build files or add dependencies. Do not commit.
+- Call the compile tool ('main') before you finish and fix every error.
+- Reply with one short paragraph: the cause and what you changed.
