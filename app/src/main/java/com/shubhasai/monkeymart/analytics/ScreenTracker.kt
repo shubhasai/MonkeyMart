@@ -1,18 +1,17 @@
 package com.shubhasai.monkeymart.analytics
 
 import android.app.Activity
-import android.util.Log
 
 /** Counts screen views per session so we can see which screens people actually use. */
 object ScreenTracker {
 
-    private val sessionScreens = mutableListOf<Activity>()
+    private var screenViews = 0
 
-    /** Call from every Activity's onCreate. */
+    /** Call from every Activity's onCreate. Only counts; never retains the Activity. */
+    @Suppress("UNUSED_PARAMETER")
     fun onScreenCreated(activity: Activity) {
-        sessionScreens += activity
-        Log.d("ScreenTracker", "screen views this session: ${sessionScreens.size} (${activity.javaClass.simpleName})")
+        screenViews++
     }
 
-    fun viewsThisSession(): Int = sessionScreens.size
+    fun viewsThisSession(): Int = screenViews
 }
